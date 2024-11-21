@@ -44,6 +44,7 @@ library(forecast)
 library(urca)
 library(earth)
 library(glmnet)
+library(cluster)
 library(kernlab)
 library(aTSA)
 library(AppliedPredictiveModeling)
@@ -53,6 +54,10 @@ library(party)
 library(gbm)
 library(Cubist)
 library(partykit)
+library(kableExtra)
+library(factoextra)
+library(FactoMineR)
+library(naniar)
 ```
 
 <p align="center">
@@ -71,82 +76,6 @@ Please submit both Rpubs links and .rmd files or other readable formats for tech
 # 1. Data Exploration
 
 ## 1.1 Load data
-
-- NAs:
-
-Brand Code: ~4.7% missing in beverage_df, ~3.0% missing in eval_df.
-
-Many numeric features have a small percentage of missing values, generally < 2%.
-
-PH: No NAs, the target variable in beverage_df. eval_df has all values missing for PH (used for prediction).
-
-Impute missing values for numeric features using median or mean (or more advanced imputation if correlated features exist). Missing values should be handled within a robust pipeline to avoid information loss.
-
-Brand Code can be imputed or left as-is, depending on the percentage missing per brand.
-
-- Skewness and outliers
-
-Variables like Mnf Flow have extreme values (mean is heavily influenced by outliers). Range: -100.2 to 229.4.
-
-PH: Check for extreme pH values that may affect model accuracy.
-
-Hyd Pressure1–4: High standard deviations (e.g., Hyd Pressure2 with a mean of ~21 and SD of 16.4).
-
-Analyze the distribution of these variables using histograms or boxplots. Maybe winsorization or BoxCox/log transformation for skewed distributions.
-
-- Feature Importance for PH pred
-
-Carb Volume, Fill Ounces, PC Volume, Carb Pressure, and Carb Temp have small sd and are likely controlled manufacturing parameters. These might directly influence pH.
-
-Brand Code can be treated as a categorical predictor for brand-specific variations.
-
-Correlation or feature importance to identify which variables most strongly influence PH.
-
-- Brand Code: 4 levels (A, B, C, D).
-
-Unbalanced distribution: B accounts for ~50% of records, while A, C, and D are much smaller. The imbalance might affect models like decision trees or ensemble methods.
-
-Apply stratified sampling or weighting to handle imbalance during training. Explore interaction effects between Brand Code and numeric variables.
-
-- Multicollinearity
-
-Variables such as Carb Volume, PC Volume, and Carb Pressure might be correlated due to their role in carbonation.
-
-Multiple pressure-related variables (Carb Pressure1, Fill Pressure, etc.) and filler speed/level metrics could also have collinear relationships.
-
-Compute a correlation matrix to detect highly correlated predictors.
-
-Principal Component Analysis (PCA) or Variance Inflation Factor (VIF) to handle multicollinearity.
-
-- Data Leakage
-
-Variables like PSC, PSC Fill, and PSC CO could be downstream measures dependent on pH. Confirm whether these are part of the production process or outcome metrics.
-
-Analyze the production process to ensure no data leakage into the model.
-
-- eval_df
-
-All PH values are missing for prediction. Maybe remove this column for now.
-
-Structure and missingness are similar to beverage_df. Ensure preprocessing and feature engineering pipelines are consistent between training and evaluation datasets.
-
-- Feature engineering 
-
-Ratios: Carb Volume / PC Volume (efficiency metrics)
-
-Differences: Carb Pressure - Fill Pressure (pressure loss)
-
-One-hot encoding for Brand Code
-
-Binning continuous variables (e.g., temperature ranges)
-
-I assume there is no timestamps, no need to add seasonality or shift-based features.
-
-- Modeling Considerations
-
-Use feature scaling:variables like Carb Flow and Filler Speed have very different ranges and should be normalized or scaled for models like SVM or neural networks.
-
-If PH is skewed, maybe log or BoxCox transforms it for models sensitive to distribution (e.g., linear regression).
 
 ```{r load_data}
 #Load train data
@@ -178,7 +107,58 @@ eval_df <- data_eval
 
 ## 1.2 Summary Statistics
 
-```{r}
+Beverage dataset: 2571 rows x 33 columns.  
+Evaluation dataset: 267 rows x 33 columns.  
+Mostly numeric, with one categorical variable (Brand Code).  
+
+- NAs:  
+Brand Code: ~4.7% missing in beverage_df, ~3.0% missing in eval_df.  
+Many numeric features have a small percentage of missing values, generally < 2%.  
+PH: 4 NAs, the target variable in beverage_df. eval_df has all values missing for PH (used for prediction).  
+Impute missing values for numeric features using median or mean (or more advanced imputation if correlated features exist). Missing values should be handled within a robust pipeline to avoid information loss.  
+Brand Code can be imputed or left as-is, depending on the percentage missing per brand.
+
+- Skewness and outliers  
+Variables like Mnf Flow have extreme values (mean is heavily influenced by outliers). Range: -100.2 to 229.4.  
+PH: Check for extreme pH values that may affect model accuracy.  
+Hyd Pressure1–4: High standard deviations (e.g., Hyd Pressure2 with a mean of ~21 and SD of 16.4).  
+Analyze the distribution of these variables using histograms or boxplots. Maybe winsorization or BoxCox/log transformation for skewed distributions.
+
+- Feature Importance for PH pred  
+Carb Volume, Fill Ounces, PC Volume, Carb Pressure, and Carb Temp have small sd and are likely controlled manufacturing parameters. These might directly influence pH.  
+Brand Code can be treated as a categorical predictor for brand-specific variations.  
+Correlation or feature importance to identify which variables most strongly influence PH.  
+
+- Brand Code: 4 levels (A, B, C, D).  
+Unbalanced distribution: B accounts for ~50% of records, while A, C, and D are much smaller. The imbalance might affect models like decision trees or ensemble methods.  
+Apply stratified sampling or weighting to handle imbalance during training. Explore interaction effects between Brand Code and numeric variables.
+
+- Multicollinearity  
+Variables such as Carb Volume, PC Volume, and Carb Pressure might be correlated due to their role in carbonation.  
+Multiple pressure-related variables (Carb Pressure1, Fill Pressure, etc.) and filler speed/level metrics could also have collinear relationships.  
+Compute a correlation matrix to detect highly correlated predictors.  
+Principal Component Analysis (PCA) or Variance Inflation Factor (VIF) to handle multicollinearity.
+
+- Data Leakage  
+Variables like PSC, PSC Fill, and PSC CO could be downstream measures dependent on pH. Confirm whether these are part of the production process or outcome metrics.  
+Analyze the production process to ensure no data leakage into the model.
+
+- eval_df  
+All PH values are missing for prediction. Maybe remove this column for now.  
+Structure and missingness are similar to beverage_df. Ensure preprocessing and feature engineering pipelines are consistent between training and evaluation datasets.
+
+- Feature engineering  
+Ratios: Carb Volume / PC Volume (efficiency metrics)  
+Differences: Carb Pressure - Fill Pressure (pressure loss)  
+One-hot encoding for Brand Code  
+Binning continuous variables (e.g., temperature ranges)  
+I assume there is no timestamps, no need to add seasonality or shift-based features.
+
+- Modeling Considerations  
+Use feature scaling:variables like Carb Flow and Filler Speed have very different ranges and should be normalized or scaled for models like SVM or neural networks.  
+If PH is skewed, maybe log or BoxCox transforms it for models sensitive to distribution (e.g., linear regression).
+
+```{r summary_statistics}
 #Check first rows of data
 DT::datatable(
       beverage_df[1:10,],
@@ -209,11 +189,7 @@ DT::datatable(
     style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
     'Table 2: First 10 Rows of Evaluation Data'
   )) 
-  
-```
 
-
-```{r}
 #Summary statistics
 DT::datatable(
       dfSummary(beverage_df, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
@@ -260,7 +236,8 @@ stat <- beverage_df %>%
     Q3 = quantile(PH, 0.75, na.rm = TRUE),
     Max = max(PH, na.rm = TRUE),
     StdDev = sd(PH, na.rm = TRUE),
-    Count = n()
+    Count = n(),
+    Missing = sum(is.na(PH)) # Add the count of NA values
   )
 
 #Summary statistics by code
@@ -282,18 +259,209 @@ DT::datatable(
 
 ## 1.3 EDA 
 
+The distribution of PH is roughly normal, centered around 8.5, with some outliers at the lower and upper tails. Gaussian distribution?  
+Brand B has significantly more entries compared to others. Balancing or stratified sampling during model training?  
+PH distribution across Brand Codes:  
+Brand C has the lowest median PH, while Brand B has the highest.  
+Outliers are present in all brand codes. Investigate whether these outliers are measurement errors or valid extreme cases.
+
+```{r plots}
+ggplot(beverage_df, aes(x = PH)) +
+  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of PH", x = "PH", y = "Frequency")
+
+ggplot(beverage_df, aes(x = `Brand Code`)) +
+  geom_bar(fill = "lightgreen") +
+  theme_minimal() +
+  labs(title = "Count of Entries by Brand Code", x = "Brand Code", y = "Count")
+
+ggplot(beverage_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Boxplot of PH by Brand Code", x = "Brand Code", y = "PH")
+
+#ggplot(beverage_df, aes(x = `Carb Pressure`, y = PH)) +
+#  geom_point(alpha = 0.6) +
+#  theme_minimal() +
+#  labs(title = "Scatterplot: Carb Pressure vs PH", x = "Carb Pressure", y = "PH")
+```
+
+
+MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint have outliers.  
+PC Volume and PSC CO2 show categorical-like distributions.  
+Mnf Flow has a long-tailed distribution.  
+Filler Speed, Hyd Pressure2, and Usage Cont have sharp peaks.  
+Hyd Pressure4 has an interesting spread, insight into process variability.  
+MFR and Oxygen Filler are heavily right-skewed.  
+Log or Box-Cox transformation for variables like MFR and Usage Cont to normalize.  
+Group categorical-like numeric variables (e.g., PSC CO2, Carb Volume) to improve interpretability.  
+
+```{r}
+numeric_vars <- beverage_df %>% 
+  select(where(is.numeric)) %>% 
+  names()
+
+#3 groups
+group_1 <- numeric_vars[1:10]
+group_2 <- numeric_vars[11:20]
+group_3 <- numeric_vars[21:32]
+
+#Group 1 plot
+beverage_df %>%
+  select(all_of(group_1)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 1")
+
+# Group 2 Plot
+beverage_df %>%
+  select(all_of(group_2)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 2")
+
+# Group 3 Plot
+beverage_df %>%
+  select(all_of(group_3)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 3")
+```
+
+The first two principal components explain approximately 20.16% and 18.74% of the variance. Some dimensionality reduction?  
+Variables close to each other (e.g., Balling, Balling Lvl, Density, and Carb Rel) are strongly correlated. 
+Dim1: Balling, Balling Lvl, Density, Carb Rel
+Dim2: Hyd Pressure3, Carb Pressure1, Fill Speed, and PH.
+Use them for modeling.  
+Filler Level, Bowl Setpoint, and PH are grouped together, they may jointly influence the PH outcome.  
+Mnf Flow and Hyd Pressure3 are distant, unique variance.  
+Variables near the origin maybe drop.  
+Combine strongly correlated (e.g., Carb Rel, Carb Flow, Density) or reduce using PCA components or clustering, factor analysis.  
+
+
+```{r}
+#PCA
+pca <- PCA(beverage_df %>% select(where(is.numeric)) %>% na.omit(), scale.unit = TRUE)
+```
+
+
+MFR highest percentage of missing values, around 7%. It is either a challenging variable to collect or might not be consistently relevant across all rows.  
+mean, median, or a model-based imputation if MFR is critical.
+If it does not strongly correlate with the target or other features, drop?  
+When <3% missingness (PSC CO2, PC Volume, etc.), simple imputation techniques.  
+For Brand Code, mode imputation.
+
+```{r}
+#NA
+gg_miss_var(beverage_df, show_pct = TRUE)
+```
+
+```{r}
+#Outliers
+boxplot(beverage_df$PH, main = "Boxplot of PH", horizontal = TRUE)
+```
+
+```{r}
+numeric_vars <- beverage_df %>%
+  select(where(is.numeric)) %>%
+  select(-PH) %>%
+  names()
+
+for (var in numeric_vars) {
+  p <- ggplot(beverage_df, aes_string(x = paste0("`", var, "`"), y = "PH")) +
+    geom_point(alpha = 0.6, color = "blue") +
+    theme_minimal() +
+    labs(title = paste("Scatterplot:", var, "vs PH"), x = var, y = "PH")
+  
+  print(p)  # Display the plot
+}
+
+```
+
+## 1.4 Correlation Matrix
+
+Bowl Setpoint (0.36) and Filler Level (0.35) show the strongest positive correlations with pH. These features might be significant predictors in any pH prediction model.  
+Carb Flow (0.23) and Pressure Vacuum (0.22) also have moderate positive correlations with pH.  
+Additional variables such as Carb Rel (0.20) and Alch Rel (0.17) show smaller but noteworthy correlations.  
+Usage Cont (-0.36) and Mnf Flow (-0.46) have strong negative correlations with pH, indicating these might inversely impact pH levels.  
+Other variables like Pressure Setpoint (-0.31) and Fill Pressure (-0.32) also negatively correlate with pH.  
+Many variables such as Carb Volume, PSC, and PSC Fill have very weak correlations (close to 0), suggesting they might not be influential in predicting pH.
+
+Density, Balling, and Carb Rel show strong intercorrelations among themselves. Multicollinearity issues in linear regression models. Maybe PCA or feature selection.
+
+Mnf Flow and Usage Cont have strong negative correlations, maybe additional preprocessing or transformation.
+
+Interaction terms between Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could also be explored, given their individual relationships with pH.
+
+```{r corr}
+tst <- beverage_df %>% 
+  select(where(is.numeric))
+#Correlation with PH
+cor_table <- cor(drop_na(tst))[, "PH"] %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  rename(Coefficient = ".") %>%
+  arrange(desc(Coefficient))
+
+kable(cor_table, "html", escape = F, col.names = c('Variable', 'Coefficient')) %>%
+  kable_styling("striped", full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  add_header_above(c("Table: Correlation with PH" = 2))
+
+#Corr matrix
+rcore <- rcorr(as.matrix(tst))
+coeff <- rcore$r
+#Filter to include only |r| > 0.1, the rest are 0
+filtered_coeff <- coeff
+filtered_coeff[abs(filtered_coeff) < 0.1] <- 0 
+coeff <- rcore$r
+corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.col = "black",
+         type="upper", order="hclust", number.cex=0.45, diag=FALSE)
+
+#Heatmap maybe
+#numeric_cols <- beverage_df %>%
+#  select(where(is.numeric)) %>%
+#  na.omit()
+
+#correlation_matrix <- cor(numeric_cols)
+#corrplot::corrplot(correlation_matrix, method = "color", type = "upper", diag = FALSE)
+```
+
+
+# 2. Data Transformation
+
+
+```{r}
+#beverage_df <- beverage_df %>%
+#  mutate(CarbPressure_CarbTemp = `Carb Pressure` * `Carb Temp`)
+
+#beverage_df <- beverage_df %>%
+#  mutate(log_CarbFlow = log(`Carb Flow` + 1))
+```
+
+```{r}
+#beverage_df <- beverage_df %>%
+#  mutate(PH = ifelse(PH > quantile(PH, 0.99), quantile(PH, 0.99), PH))
+```
 
 
 
 
 
-
-
-
-
-
-
-
+- Start with Linear Regression after transformation and dimensionality reduction.
+- Random Forest or Gradient Boosting for multicollinearity, so no dimensionality reduction but informed variable selection. 
+-SVM  
+- Regularized regression models, need to remove redundant features to reduce noise.  
 
 
 
