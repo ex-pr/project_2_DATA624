@@ -15,7 +15,7 @@ editor_options:
 
 <style>
 body {
-    text-align: justify; /* Justifies text */
+    text-align: justify; 
 }
 </style>
 
@@ -259,6 +259,13 @@ DT::datatable(
 
 ## 1.3 EDA 
 
+The pH of a solution is measured on a range of 0 to 14, indicating its acidity or alkalinity. The pH level in beverage manufacturing is crucial for flavor, safety, shelf life, and uniformity.
+
+The most common pH in the dataset is around 8.5, indicating that this is the desired pH for many batches of beverages. For carbonated beverages, this slightly alkaline pH might:  
+Improve Taste: Balance the tang of carbonation with a smoother, less acidic flavor.  
+Aid in Shelf Stability: Make sure the beverage is resistant to microbial growth and chemical deterioration.  
+Reflect Process Consistency: pH variations may reflect differences in raw material quality, carbonation levels, or filling precision.  
+
 The distribution of PH is roughly normal, centered around 8.5, with some outliers at the lower and upper tails. Gaussian distribution?  
 Brand B has significantly more entries compared to others. Balancing or stratified sampling during model training?  
 PH distribution across Brand Codes:  
@@ -403,6 +410,30 @@ Mnf Flow and Usage Cont have strong negative correlations, maybe additional prep
 
 Interaction terms between Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could also be explored, given their individual relationships with pH.
 
+
+Bowl Setpoint (correlation: 0.35).  
+Role in Production: This parameter most likely affects the flow or intensity of ingredient mixing during the carbonation or flavoring stages.
+Impact on pH: A higher bowl setpoint may result in more uniform mixing, lowering pH variability. Operators should keep a tight eye on this to avoid overmixing, which could result in deviations.  
+
+Filler Level (correlation: 0.32).  
+Role in Production: Ensures that containers are properly filled to prevent extra air or gas imbalances.
+Impact on pH: Over- or under-filled containers may vary carbonation levels, influencing the final pH. Proper calibration reduces waste while preserving the beverage profile.
+
+Pressure Vacuum (correlation: 0.22).  
+Role in Production: Assists with gas exchange during filling.
+Variations in vacuum pressure may cause inconsistent carbonation, changing the pH away from the target. Monitoring this ensures the desired "bite" of carbonation.
+
+Oxygen Filler (correlation: 0.17).  
+Role in Production: Determines the amount of oxygen introduced during filling.
+Impact on pH: Higher oxygen levels may accelerate oxidation, reducing pH and compromising flavor stability. Maintaining a low oxygen level protects product quality.
+
+Mnf Flow (correlation: -0.45)  
+Role in Production: Describes the rate at which materials flow during production.
+Impact on pH: A higher flow rate may result in irregular mixing, reduced carbonation, and a shift in pH. Adjusting flow rates can aid operators in maintaining consistent product attributes.
+
+
+
+
 ```{r corr}
 tst <- beverage_df %>% 
   select(where(is.numeric))
@@ -438,31 +469,236 @@ corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.
 ```
 
 
-# 2. Data Transformation
+# 2. Data Preparation
+
+- Missing Value Imputation  
+Impute predictors using mean/mode or advanced methods (e.g., MICE).  
+Ensure no missing values in the dataset before modeling.  
+- Handle Outliers  
+Winsorize or transform outliers to prevent skewed model behavior.  
+- Encode Categorical Variables  
+Use one-hot encoding for models requiring numerical inputs (e.g., linear regression, neural networks).  
+Label encoding for tree-based models (e.g., random forest, XGBoost).  
+Standardize or Normalize  
+Standardize numerical variables for models sensitive to scale (e.g., linear regression, SVR, KNN).  
+Scaling is not required for tree-based models.  
+- Dimensionality Reduction  
+Use PCA or feature selection (e.g., Recursive Feature Elimination) to reduce redundancy and multicollinearity.  
+
+**Dimension reduction** exclude any near zero-variance predictors?  
+near zero-variance: remove Hyd Pressure1
 
 
 ```{r}
-#beverage_df <- beverage_df %>%
-#  mutate(CarbPressure_CarbTemp = `Carb Pressure` * `Carb Temp`)
+# Identify zero-variance predictors
+zero_var_1 <- nearZeroVar(beverage_df, saveMetrics = TRUE)
+print(zero_var_1[zero_var_1$nzv, ])
 
-#beverage_df <- beverage_df %>%
-#  mutate(log_CarbFlow = log(`Carb Flow` + 1))
+beverage_df <- beverage_df[, !zero_var_predictors$nzv]
+```
+
+**Imputing missing values** mice() ?
+
+NA brand code to brand code “A”? 
+
+Change the Brand code to a factor variable
+
+```{r}
+preProcValues <- preProcess(beverage_df, method = c("medianImpute", "modeImpute"))
+beverage_df_imputed <- predict(preProcValues, beverage_df)
+eval_df_imputed <- predict(preProcValues, eval_df)
 ```
 
 ```{r}
-#beverage_df <- beverage_df %>%
-#  mutate(PH = ifelse(PH > quantile(PH, 0.99), quantile(PH, 0.99), PH))
+#Outliers
+num_cols <- names(beverage_df_imputed)[sapply(beverage_df_imputed, is.numeric)]
+beverage_df_imputed[num_cols] <- beverage_df_imputed[num_cols] %>%
+  mutate_all(~ Winsorize(., probs = c(0.05, 0.95)))
+```
+
+```{r}
+#Encode Categorical Variables
+beverage_df_imputed <- beverage_df_imputed %>%
+  mutate(Brand.Code = as.factor(Brand.Code)) %>%
+  mutate(across(where(is.factor), ~ as.numeric(as.factor(.)) - 1))
+
+#Standardize Numerical Predictors
+num_cols <- names(beverage_df_imputed)[sapply(beverage_df_imputed, is.numeric)]
+preProcScale <- preProcess(beverage_df_imputed[, num_cols], method = c("center", "scale"))
+beverage_df_scaled <- predict(preProcScale, beverage_df_imputed )
+eval_df_scaled <- predict(preProcScale, eval_df_imputed)
 ```
 
 
+```{r}
+#PCA to reduce dimensionality and handle multicollinearity
+pca <- prcomp(beverage_df_scaled %>% select(num_cols), scale. = TRUE)
+summary(pca) # Check explained variance
+
+#Principal components explaining ~95% variance
+pca_threshold <- 0.95
+explained_var <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
+num_components <- which(explained_var >= pca_threshold)[1]
+
+#Transform datasets using selected principal components
+beverage_df_pca <- as.data.frame(pca$x[, 1:num_components])
+eval_df_pca <- as.data.frame(predict(pca, newdata = eval_df_scaled)[, 1:num_components])
+
+#Add back the target variable
+beverage_df_pca$PH <- beverage_df_scaled$PH
+```
+
+**Preprocess scale, center**
 
 
 
-- Start with Linear Regression after transformation and dimensionality reduction.
-- Random Forest or Gradient Boosting for multicollinearity, so no dimensionality reduction but informed variable selection. 
--SVM  
-- Regularized regression models, need to remove redundant features to reduce noise.  
+# 3. Build Models
+
+```{r}
+set.seed(547)
+trainIndex <- createDataPartition(beverage_df_pca$PH, p = 0.8, list = FALSE)
+train <- df1_scaled[trainIndex, ]
+test <- df1_scaled[-trainIndex, ]
+
+#Setup cv
+control <- trainControl(method = "cv", number = 10, savePredictions = TRUE)
+```
+
+**Linear Model**
+
+Preparation:  
+Standardize numerical variables to ensure coefficients are comparable.  
+Handle multicollinearity (remove highly correlated variables using PCA or VIF analysis).  
+Encode categorical variables using one-hot encoding.  
+
+```{r}
+set.seed(547)
+lm_model <- train(
+  PH ~ ., data = train, method = "lm",
+  trControl = control
+)
+summary(lm_model)
+lm_pred <- predict(lm_model, test)
+lm_rmse <- sqrt(mean((lm_pred - test$PH)^2))
+print(paste("Linear Regression RMSE:", lm_rmse))
+```
 
 
+**Random Forest**
+
+Robust against overfitting and captures complex interactions. Handles missing data better than most models.  
+
+Preparation:  
+Minimal scaling required.  
+Impute missing values for predictors for improved accuracy.  
+
+```{r}
+set.seed(547)
+rf_model <- train(
+  PH ~ ., data = train, method = "rf",
+  trControl = control,
+  tuneLength = 5 
+)
+print(rf_model)
+rf_pred <- predict(rf_model, test)
+rf_rmse <- sqrt(mean((rf_pred - test$PH)^2))
+print(paste("Random Forest RMSE:", rf_rmse))
+
+rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
+rf_tune
+
+rf_results <- postResample(pred = rf_pred, obs = test$PH)
+rf_results
+```
+
+**Gradient Boosting**
+
+Preparation:  
+Ensure categorical variables are encoded appropriately (e.g., label encoding).  
+Scaling is typically not required, but imputing missing values improves performance.  
+
+```{r}
+set.seed(547)
+xgb_grid <- expand.grid(
+  nrounds = c(50, 100),
+  max_depth = c(2, 4, 6),
+  eta = c(0.1, 0.3),
+  gamma = 0,
+  colsample_bytree = 0.8,
+  min_child_weight = 1,
+  subsample = 0.8
+)
+xgb_model <- train(
+  PH ~ ., data = train, method = "xgbTree",
+  trControl = control,
+  tuneGrid = xgb_grid
+)
+print(xgb_model)
+xgb_pred <- predict(xgb_model, test)
+xgb_rmse <- sqrt(mean((xgb_pred - test$PH)^2))
+print(paste("XGBoost RMSE:", xgb_rmse))
+```
 
 
+**Support Vector Regression**
+
+Preparation:  
+Standardize numerical predictors to avoid dominance by variables with larger scales.  
+Encode categorical variables using one-hot encoding.  
+
+```{r}
+set.seed(547)
+svr_model <- train(
+  PH ~ ., data = train, method = "svmRadial",
+  trControl = control,
+  tuneLength = 5
+)
+print(svr_model)
+svr_pred <- predict(svr_model, test)
+svr_rmse <- sqrt(mean((svr_pred - test$PH)^2))
+print(paste("SVR RMSE:", svr_rmse))
+```
+
+
+**Neural networks**
+
+Preparation:  
+Normalize or standardize numerical features.  
+One-hot encode categorical variables.  
+Impute missing values.  
+
+
+```{r}
+set.seed(547)
+nn_model <- train(
+  PH ~ ., data = train, method = "nnet",
+  trControl = control,
+  tuneLength = 5,
+  linout = TRUE, # For regression
+  trace = FALSE
+)
+print(nn_model)
+nn_pred <- predict(nn_model, test)
+nn_rmse <- sqrt(mean((nn_pred - test$PH)^2))
+print(paste("Neural Network RMSE:", nn_rmse))
+
+```
+
+**K-Nearest Neighbors (KNN) Regression**
+
+Preparation:  
+Standardize or normalize numerical predictors for distance-based calculations.  
+Impute missing values. 
+
+```{r}
+set.seed(547)
+knn_model <- train(
+  PH ~ ., data = train, method = "knn",
+  trControl = control,
+  tuneLength = 5
+)
+print(knn_model)
+knn_pred <- predict(knn_model, test)
+knn_rmse <- sqrt(mean((knn_pred - test$PH)^2))
+print(paste("KNN RMSE:", knn_rmse))
+```
