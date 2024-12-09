@@ -23,6 +23,8 @@ body {
 #chunks
 knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, fig.height=5, fig.align='center')
 
+#install.packages("factoextra")
+
 #libraries
 library(tidyverse)
 library(summarytools)
@@ -454,6 +456,9 @@ corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.
 #  mutate(PH = ifelse(PH > quantile(PH, 0.99), quantile(PH, 0.99), PH))
 ```
 
+```{r}
+clean_bev <- beverage_df
+```
 
 
 
