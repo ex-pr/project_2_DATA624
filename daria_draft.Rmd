@@ -58,6 +58,8 @@ library(kableExtra)
 library(factoextra)
 library(FactoMineR)
 library(naniar)
+library(mice)
+library(janitor)
 ```
 
 <p align="center">
@@ -114,9 +116,8 @@ Mostly numeric, with one categorical variable (Brand Code).
 - NAs:  
 Brand Code: ~4.7% missing in beverage_df, ~3.0% missing in eval_df.  
 Many numeric features have a small percentage of missing values, generally < 2%.  
-PH: 4 NAs, the target variable in beverage_df. eval_df has all values missing for PH (used for prediction).  
+PH: 4 NAs for Brand code B, the target variable in beverage_df. eval_df has all values missing for PH (used for prediction).  
 Impute missing values for numeric features using median or mean (or more advanced imputation if correlated features exist). Missing values should be handled within a robust pipeline to avoid information loss.  
-Brand Code can be imputed or left as-is, depending on the percentage missing per brand.
 
 - Skewness and outliers  
 Variables like Mnf Flow have extreme values (mean is heavily influenced by outliers). Range: -100.2 to 229.4.  
@@ -237,7 +238,7 @@ stat <- beverage_df %>%
     Max = max(PH, na.rm = TRUE),
     StdDev = sd(PH, na.rm = TRUE),
     Count = n(),
-    Missing = sum(is.na(PH)) # Add the count of NA values
+    Missing = sum(is.na(PH)) 
   )
 
 #Summary statistics by code
@@ -251,13 +252,41 @@ DT::datatable(
       rownames = FALSE,
       caption = htmltools::tags$caption(
     style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
-    'Table 5: Summary Statistics for Each Brand Code'
+    'Table 5: Summary Statistics PH for Each Brand Code'
   )) %>%
   DT::formatRound(columns = c("Min", "Q1", "Median", "Mean", "Q3", "Max", "StdDev"), digits = 3)
 ```
 
 
 ## 1.3 EDA 
+
+Carb Volume: Volume of the beverage that is carbonated.  
+Fill Ounces: Volume of the beverage filled into containers, measured in ounces.  
+PC Volume: Could indicate "Process Control Volume," a measure related to production parameters.  
+Carb Pressure: Pressure used during the carbonation process.  
+Carb Temp: Temperature of the beverage during carbonation.  
+PSC: Potentially a quality control metric, the exact meaning would depend on industry context.  
+PSC Fill: Quality or quantity metric related to the filling process.  
+PSC CO2: Measures CO2 levels or pressure during processing.  
+Mnf Flow: Manufacturing flow rate, likely related to how fast the production line operates.  
+Carb Pressure1: Another measurement of pressure during carbonation, possibly at a different production stage.  
+Fill Pressure: Pressure maintained during the filling of beverages into containers.  
+Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4: Different points of hydraulic pressure measurement within the machinery.  
+Filler Level: Level to which containers are filled; critical for consistency.  
+Filler Speed: Speed at which the filling machinery operates.  
+Temperature: General temperature measurement.  
+Carb Flow: Flow rate of the carbonation process.  
+Density: Physical density of the beverage, which impacts taste and mouthfeel.  
+MFR: Manufacturer’s reference; could relate to specific production settings or machine identifiers.  
+Balling: Measurement related to the sugar content of a liquid, typically used in brewing.    
+Pressure Vacuum: Pressure readings from a vacuum process, possibly in packaging.  
+Oxygen Filler: Likely measures the presence of oxygen during filling, which must be minimized in certain beverages.  
+Bowl Setpoint: Setpoint for a particular part of the machinery, possibly related to mixing or blending.  
+Pressure Setpoint: Target pressure to be maintained within certain machinery or process stages.  
+Air Pressurer: Air pressure readings.  
+Alch Rel: Could be "Alcohol Release" or related to the alcohol content management.  
+Carb Rel: Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.  
+Balling Lvl: Specific gravity of the liquid related to its sugar content, important in quality control in brewing and beverage manufacturing.  
 
 The pH of a solution is measured on a range of 0 to 14, indicating its acidity or alkalinity. The pH level in beverage manufacturing is crucial for flavor, safety, shelf life, and uniformity.
 
@@ -266,8 +295,10 @@ Improve Taste: Balance the tang of carbonation with a smoother, less acidic flav
 Aid in Shelf Stability: Make sure the beverage is resistant to microbial growth and chemical deterioration.  
 Reflect Process Consistency: pH variations may reflect differences in raw material quality, carbonation levels, or filling precision.  
 
-The distribution of PH is roughly normal, centered around 8.5, with some outliers at the lower and upper tails. Gaussian distribution?  
-Brand B has significantly more entries compared to others. Balancing or stratified sampling during model training?  
+The distribution of PH is roughly normal (slight negative skew), centered around 8.5, with some outliers at the lower and upper tails. 
+
+Brand B has significantly more entries compared to others. Balancing or stratified sampling during model training? 
+
 PH distribution across Brand Codes:  
 Brand C has the lowest median PH, while Brand B has the highest.  
 Outliers are present in all brand codes. Investigate whether these outliers are measurement errors or valid extreme cases.
@@ -281,55 +312,71 @@ ggplot(beverage_df, aes(x = PH)) +
 ggplot(beverage_df, aes(x = `Brand Code`)) +
   geom_bar(fill = "lightgreen") +
   theme_minimal() +
-  labs(title = "Count of Entries by Brand Code", x = "Brand Code", y = "Count")
+  labs(title = "Count by Brand Code", x = "Brand Code", y = "Count")
 
-ggplot(beverage_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
+filtered_df <- beverage_df %>%
+  filter(!is.na(`Brand Code`))
+
+ggplot(filtered_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
   geom_boxplot() +
   theme_minimal() +
   labs(title = "Boxplot of PH by Brand Code", x = "Brand Code", y = "PH")
-
-#ggplot(beverage_df, aes(x = `Carb Pressure`, y = PH)) +
-#  geom_point(alpha = 0.6) +
-#  theme_minimal() +
-#  labs(title = "Scatterplot: Carb Pressure vs PH", x = "Carb Pressure", y = "PH")
 ```
 
 
 MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint have outliers.  
-PC Volume and PSC CO2 show categorical-like distributions.  
+Alch Rel, Balling, Balling Lvl have bimonial distribution, maybe binning will be needed.  
 Mnf Flow has a long-tailed distribution.  
 Filler Speed, Hyd Pressure2, and Usage Cont have sharp peaks.  
 Hyd Pressure4 has an interesting spread, insight into process variability.  
 MFR and Oxygen Filler are heavily right-skewed.  
 Log or Box-Cox transformation for variables like MFR and Usage Cont to normalize.  
-Group categorical-like numeric variables (e.g., PSC CO2, Carb Volume) to improve interpretability.  
 
 ```{r}
-numeric_vars <- beverage_df %>% 
-  select(where(is.numeric)) %>% 
-  names()
-
+#numeric_vars <- beverage_df %>% 
+#  select(where(is.numeric)) %>% 
+#  select(-PH) %>% 
+#  names() 
 #3 groups
-group_1 <- numeric_vars[1:10]
-group_2 <- numeric_vars[11:20]
-group_3 <- numeric_vars[21:32]
+#group_1 <- numeric_vars[1:10]
+#group_2 <- numeric_vars[11:20]
+#group_3 <- numeric_vars[21:31]
+
+
+group_1 <- c("Carb Pressure", "Carb Pressure1", "Carb Temp", "Temperature", 
+             "Usage cont", "Fill Pressure", "Air Pressurer", "Alch Rel", 
+             "Balling", "Balling Lvl")
+
+group_2 <- c("Carb Volume", "Carb Rel", "Fill Ounces", "Oxygen Filler", "Density", 
+             "PC Volume", "PSC", "PSC CO2", 
+             "PSC Fill", "Pressure Setpoint", "Pressure Vacuum")
+
+group_3 <- c("Mnf Flow", "Carb Flow", "Filler Level", "Filler Speed", "Hyd Pressure1", 
+             "Hyd Pressure2", "Hyd Pressure3", "Hyd Pressure4", "MFR", "Bowl Setpoint")
 
 #Group 1 plot
 beverage_df %>%
   select(all_of(group_1)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
-  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  geom_histogram(binwidth = 0.3, fill = "lightgreen", color = "black") +
   facet_wrap(~name, scales = "free", ncol = 5) +
   theme_minimal() +
   labs(title = "Distribution of Variables: Group 1")
+
+#Carb Pressure, Carb Pressure 1, Carb Temp, Temperature, Usage cont, Fill Pressure, Air Pressurer, Alch Rel trinomial, Balling binomial, Balling Lvl binomial
+
+#Carb Volume, Carb Rel, Fill Ounces, Oxygen Filler, Density, PC Volume normal, PSC skew right, PSC CO2 skew right, PSC Fill skew right, Pressure Setpoint, Pressure Vacuum
+
+#Mnf Flow, Carb Flow, Filler Level, Filler Speed, Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4, MFR, Bowl Setpoint, MFR
+
 
 # Group 2 Plot
 beverage_df %>%
   select(all_of(group_2)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
-  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
   facet_wrap(~name, scales = "free", ncol = 5) +
   theme_minimal() +
   labs(title = "Distribution of Variables: Group 2")
@@ -339,28 +386,11 @@ beverage_df %>%
   select(all_of(group_3)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
-  geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
+  geom_histogram(binwidth = 1, fill = "lightgreen", color = "black") +
   facet_wrap(~name, scales = "free", ncol = 5) +
   theme_minimal() +
   labs(title = "Distribution of Variables: Group 3")
 ```
-
-The first two principal components explain approximately 20.16% and 18.74% of the variance. Some dimensionality reduction?  
-Variables close to each other (e.g., Balling, Balling Lvl, Density, and Carb Rel) are strongly correlated. 
-Dim1: Balling, Balling Lvl, Density, Carb Rel
-Dim2: Hyd Pressure3, Carb Pressure1, Fill Speed, and PH.
-Use them for modeling.  
-Filler Level, Bowl Setpoint, and PH are grouped together, they may jointly influence the PH outcome.  
-Mnf Flow and Hyd Pressure3 are distant, unique variance.  
-Variables near the origin maybe drop.  
-Combine strongly correlated (e.g., Carb Rel, Carb Flow, Density) or reduce using PCA components or clustering, factor analysis.  
-
-
-```{r}
-#PCA
-pca <- PCA(beverage_df %>% select(where(is.numeric)) %>% na.omit(), scale.unit = TRUE)
-```
-
 
 MFR highest percentage of missing values, around 7%. It is either a challenging variable to collect or might not be consistently relevant across all rows.  
 mean, median, or a model-based imputation if MFR is critical.
@@ -374,16 +404,6 @@ gg_miss_var(beverage_df, show_pct = TRUE)
 ```
 
 ```{r}
-#Outliers
-boxplot(beverage_df$PH, main = "Boxplot of PH", horizontal = TRUE)
-```
-
-```{r}
-numeric_vars <- beverage_df %>%
-  select(where(is.numeric)) %>%
-  select(-PH) %>%
-  names()
-
 for (var in numeric_vars) {
   p <- ggplot(beverage_df, aes_string(x = paste0("`", var, "`"), y = "PH")) +
     geom_point(alpha = 0.6, color = "blue") +
@@ -397,12 +417,6 @@ for (var in numeric_vars) {
 
 ## 1.4 Correlation Matrix
 
-Bowl Setpoint (0.36) and Filler Level (0.35) show the strongest positive correlations with pH. These features might be significant predictors in any pH prediction model.  
-Carb Flow (0.23) and Pressure Vacuum (0.22) also have moderate positive correlations with pH.  
-Additional variables such as Carb Rel (0.20) and Alch Rel (0.17) show smaller but noteworthy correlations.  
-Usage Cont (-0.36) and Mnf Flow (-0.46) have strong negative correlations with pH, indicating these might inversely impact pH levels.  
-Other variables like Pressure Setpoint (-0.31) and Fill Pressure (-0.32) also negatively correlate with pH.  
-Many variables such as Carb Volume, PSC, and PSC Fill have very weak correlations (close to 0), suggesting they might not be influential in predicting pH.
 
 Density, Balling, and Carb Rel show strong intercorrelations among themselves. Multicollinearity issues in linear regression models. Maybe PCA or feature selection.
 
@@ -411,11 +425,11 @@ Mnf Flow and Usage Cont have strong negative correlations, maybe additional prep
 Interaction terms between Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could also be explored, given their individual relationships with pH.
 
 
-Bowl Setpoint (correlation: 0.35).  
+Bowl Setpoint (correlation: 0.36).  
 Role in Production: This parameter most likely affects the flow or intensity of ingredient mixing during the carbonation or flavoring stages.
 Impact on pH: A higher bowl setpoint may result in more uniform mixing, lowering pH variability. Operators should keep a tight eye on this to avoid overmixing, which could result in deviations.  
 
-Filler Level (correlation: 0.32).  
+Filler Level (correlation: 0.35).  
 Role in Production: Ensures that containers are properly filled to prevent extra air or gas imbalances.
 Impact on pH: Over- or under-filled containers may vary carbonation levels, influencing the final pH. Proper calibration reduces waste while preserving the beverage profile.
 
@@ -458,14 +472,6 @@ filtered_coeff[abs(filtered_coeff) < 0.1] <- 0
 coeff <- rcore$r
 corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.col = "black",
          type="upper", order="hclust", number.cex=0.45, diag=FALSE)
-
-#Heatmap maybe
-#numeric_cols <- beverage_df %>%
-#  select(where(is.numeric)) %>%
-#  na.omit()
-
-#correlation_matrix <- cor(numeric_cols)
-#corrplot::corrplot(correlation_matrix, method = "color", type = "upper", diag = FALSE)
 ```
 
 
@@ -474,14 +480,18 @@ corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.
 - Missing Value Imputation  
 Impute predictors using mean/mode or advanced methods (e.g., MICE).  
 Ensure no missing values in the dataset before modeling.  
+
 - Handle Outliers  
 Winsorize or transform outliers to prevent skewed model behavior.  
 - Encode Categorical Variables  
+
 Use one-hot encoding for models requiring numerical inputs (e.g., linear regression, neural networks).  
 Label encoding for tree-based models (e.g., random forest, XGBoost).  
+
 Standardize or Normalize  
 Standardize numerical variables for models sensitive to scale (e.g., linear regression, SVR, KNN).  
 Scaling is not required for tree-based models.  
+
 - Dimensionality Reduction  
 Use PCA or feature selection (e.g., Recursive Feature Elimination) to reduce redundancy and multicollinearity.  
 
@@ -489,12 +499,28 @@ Use PCA or feature selection (e.g., Recursive Feature Elimination) to reduce red
 near zero-variance: remove Hyd Pressure1
 
 
+Fix colnames
+```{r}
+#Fix column names
+colnames(beverage_df) <- make_clean_names(colnames(beverage_df))
+
+#Check new column names
+colnames(beverage_df)
+
+#Apply the same to eval_df 
+colnames(eval_df) <- make_clean_names(colnames(eval_df))
+
+colnames(eval_df)
+```
+
+
 ```{r}
 # Identify zero-variance predictors
-zero_var_1 <- nearZeroVar(beverage_df, saveMetrics = TRUE)
-print(zero_var_1[zero_var_1$nzv, ])
+zero_var <- nearZeroVar(beverage_df, saveMetrics = TRUE)
+print(zero_var[zero_var$nzv, ])
 
-beverage_df <- beverage_df[, !zero_var_predictors$nzv]
+beverage_df <- beverage_df[, !zero_var$nzv]
+eval_df <- eval_df[, !zero_var$nzv]
 ```
 
 **Imputing missing values** mice() ?
@@ -503,52 +529,100 @@ NA brand code to brand code “A”?
 
 Change the Brand code to a factor variable
 
+Maybe log transf for outliers in Air Pressurer?
+
+For Brand Code random forest imputation, for the rest - mice.
+
 ```{r}
-preProcValues <- preProcess(beverage_df, method = c("medianImpute", "modeImpute"))
-beverage_df_imputed <- predict(preProcValues, beverage_df)
-eval_df_imputed <- predict(preProcValues, eval_df)
+set.seed(547)
+#Exclude Brand Code from the imputation
+beverage_mice <- beverage_df %>% select(-brand_code)
+eval_mice <- eval_df %>% select(-brand_code)
+
+#Apply MICE to train df
+imputed_train <- mice(beverage_mice, method='pmm', m=5, seed=547)
+
+#Extract the completed train df
+completed_train <- complete(imputed_train, 1)
+
+# Apply the same imputation model to evaluation data
+imputed_eval <- mice(eval_mice, method='pmm', m=5, seed=123)
+completed_eval <- complete(imputed_eval, 1)
+
+#Add the imputed columns back
+beverage_imputed <- cbind(completed_train, brand_code = beverage_df$brand_code)
+eval_imputed <- cbind(completed_eval, brand_code = eval_df$brand_code)
 ```
 
 ```{r}
-#Outliers
-num_cols <- names(beverage_df_imputed)[sapply(beverage_df_imputed, is.numeric)]
-beverage_df_imputed[num_cols] <- beverage_df_imputed[num_cols] %>%
-  mutate_all(~ Winsorize(., probs = c(0.05, 0.95)))
+set.seed(547)
+#Separate data with and without missing Brand Code
+df_complete <- beverage_imputed[!is.na(beverage_imputed$brand_code), ]
+df_missing <-beverage_imputed[is.na(beverage_imputed$brand_code), ]
+
+df_eval_complete <- eval_imputed[!is.na(eval_imputed$brand_code), ]
+df_eval_missing <- eval_imputed[is.na(eval_imputed$brand_code), ]
+
+df_complete$brand_code <- as.factor(df_complete$brand_code)
+df_eval_complete$brand_code <- as.factor(df_eval_complete$brand_code)
+
+#Train Random Forest
+rf_model <- randomForest(brand_code ~ ., data=df_complete, ntree=100)
+
+#Predict missing Brand Codes
+df_missing$brand_code <- predict(rf_model, newdata=df_missing)
+df_eval_missing $brand_code <- predict(rf_model, newdata=df_eval_missing)
+
+#Combine back
+beverage_imputed <- rbind(df_complete, df_missing)
+eval_imputed <- rbind(df_eval_complete, df_eval_missing)
 ```
 
-```{r}
-#Encode Categorical Variables
-beverage_df_imputed <- beverage_df_imputed %>%
-  mutate(Brand.Code = as.factor(Brand.Code)) %>%
-  mutate(across(where(is.factor), ~ as.numeric(as.factor(.)) - 1))
-
-#Standardize Numerical Predictors
-num_cols <- names(beverage_df_imputed)[sapply(beverage_df_imputed, is.numeric)]
-preProcScale <- preProcess(beverage_df_imputed[, num_cols], method = c("center", "scale"))
-beverage_df_scaled <- predict(preProcScale, beverage_df_imputed )
-eval_df_scaled <- predict(preProcScale, eval_df_imputed)
-```
-
+The first two principal components explain approximately 20.16% and 18.74% of the variance. Some dimensionality reduction?  
+Variables close to each other (e.g., Balling, Balling Lvl, Density, and Carb Rel) are strongly correlated. 
+Dim1: Balling, Balling Lvl, Density, Carb Rel
+Dim2: Hyd Pressure3, Carb Pressure1, Fill Speed, and PH.
+Use them for modeling.  
+Filler Level, Bowl Setpoint, and PH are grouped together, they may jointly influence the PH outcome.  
+Mnf Flow and Hyd Pressure3 are distant, unique variance.  
+Variables near the origin maybe drop.  
+Combine strongly correlated (e.g., Carb Rel, Carb Flow, Density) or reduce using PCA components or clustering, factor analysis.  
 
 ```{r}
-#PCA to reduce dimensionality and handle multicollinearity
-pca <- prcomp(beverage_df_scaled %>% select(num_cols), scale. = TRUE)
-summary(pca) # Check explained variance
+set.seed(547)
+#Exclude PH and Brand Code
+pca_train <- beverage_imputed %>% select(-ph, -brand_code)
+pca_eval <- eval_imputed %>% select(-ph, -brand_code)
 
-#Principal components explaining ~95% variance
-pca_threshold <- 0.95
-explained_var <- cumsum(pca$sdev^2 / sum(pca$sdev^2))
-num_components <- which(explained_var >= pca_threshold)[1]
+#Centering, scaling, and PCA
+preproc_params <- preProcess(pca_train, method = c("center", "scale", "pca"), thresh = 0.90)
 
-#Transform datasets using selected principal components
-beverage_df_pca <- as.data.frame(pca$x[, 1:num_components])
-eval_df_pca <- as.data.frame(predict(pca, newdata = eval_df_scaled)[, 1:num_components])
+#Transform train
+train_preproc <- predict(preproc_params, newdata = pca_train)
 
-#Add back the target variable
-beverage_df_pca$PH <- beverage_df_scaled$PH
+#Transform eval
+eval_preproc <- predict(preproc_params, newdata = pca_eval)
+
+#Add PH and Brand Code back
+beverage_pca <- cbind(train_preproc, ph = beverage_imputed$ph, brand_code = beverage_imputed$brand_code)
+eval_pca <- cbind(eval_preproc, ph = eval_imputed$ph, brand_code = eval_imputed$brand_code)
+
+#Access the PCA rotation matrix and cumulative variance explained
+pca_summary <- preproc_params$rotation 
+
+#Display PCA summary
+print("PCA Loadings:")
+print(pca_summary)
 ```
 
 **Preprocess scale, center**
+
+
+Interaction_Term = Filler Level * Bowl Setpoint.  
+Carb Pressure to Bowl Setpoint (Carb Pressure / Bowl Setpoint).  
+Mnf Flow to Usage cont (Mnf Flow / Usage cont).  
+Avg_Pressure = mean(Carb Pressure, Fill Pressure).  
+Binning: Bowl Setpoint, Filler Level.
 
 
 
@@ -556,31 +630,15 @@ beverage_df_pca$PH <- beverage_df_scaled$PH
 
 ```{r}
 set.seed(547)
-trainIndex <- createDataPartition(beverage_df_pca$PH, p = 0.8, list = FALSE)
-train <- df1_scaled[trainIndex, ]
-test <- df1_scaled[-trainIndex, ]
+trainIndex <- createDataPartition(beverage_imputed$ph, p = 0.8, list = FALSE)
+train <- beverage_imputed[trainIndex, ]
+test <- beverage_imputed[-trainIndex, ]
 
 #Setup cv
-control <- trainControl(method = "cv", number = 10, savePredictions = TRUE)
-```
+control <- trainControl(method = "repeatedcv", number = 10, repeats = 3) 
 
-**Linear Model**
-
-Preparation:  
-Standardize numerical variables to ensure coefficients are comparable.  
-Handle multicollinearity (remove highly correlated variables using PCA or VIF analysis).  
-Encode categorical variables using one-hot encoding.  
-
-```{r}
-set.seed(547)
-lm_model <- train(
-  PH ~ ., data = train, method = "lm",
-  trControl = control
-)
-summary(lm_model)
-lm_pred <- predict(lm_model, test)
-lm_rmse <- sqrt(mean((lm_pred - test$PH)^2))
-print(paste("Linear Regression RMSE:", lm_rmse))
+#Remove PH column from eval_df
+eval_imputed <- subset(eval_imputed, select = -ph)
 ```
 
 
@@ -594,19 +652,22 @@ Impute missing values for predictors for improved accuracy.
 
 ```{r}
 set.seed(547)
-rf_model <- train(
-  PH ~ ., data = train, method = "rf",
-  trControl = control,
-  tuneLength = 5 
-)
-print(rf_model)
-rf_pred <- predict(rf_model, test)
-rf_rmse <- sqrt(mean((rf_pred - test$PH)^2))
-print(paste("Random Forest RMSE:", rf_rmse))
 
+rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
+rf_model <- train(ph ~ ., data = train, 
+                  method = "rf",
+                  tuneGrid = rfGrid,
+                  trControl = control,
+                  importance = TRUE)
+print(rf_model)
+
+#mtry=12, RMSE=0.5964259, R2=0.6880949, MAE=0.474942
 rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
 rf_tune
 
+rf_pred <- predict(rf_model, newdata = test)
+
+#RMSE=0.7047602, R2=0.5273906. MAE= 0.5368589 
 rf_results <- postResample(pred = rf_pred, obs = test$PH)
 rf_results
 ```
@@ -619,24 +680,22 @@ Scaling is typically not required, but imputing missing values improves performa
 
 ```{r}
 set.seed(547)
-xgb_grid <- expand.grid(
-  nrounds = c(50, 100),
-  max_depth = c(2, 4, 6),
-  eta = c(0.1, 0.3),
-  gamma = 0,
-  colsample_bytree = 0.8,
-  min_child_weight = 1,
-  subsample = 0.8
-)
-xgb_model <- train(
-  PH ~ ., data = train, method = "xgbTree",
-  trControl = control,
-  tuneGrid = xgb_grid
-)
-print(xgb_model)
-xgb_pred <- predict(xgb_model, test)
-xgb_rmse <- sqrt(mean((xgb_pred - test$PH)^2))
-print(paste("XGBoost RMSE:", xgb_rmse))
+gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
+gbm_model <- train(ph ~ ., data = train, 
+                   method = "gbm", 
+                   tuneGrid = gbmGrid, 
+                   trControl = control,
+                   verbose = FALSE)
+
+#shrinkage=0.1, interaction.depth=7, n.minobsinnode=5, n.trees=1000, RMSE=0.5309327, R2=0.7271511, MAE=0.4144839
+gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
+gbm_tune
+
+gbm_predictions <- predict(gbm_model, newdata = test)
+
+#RMSE=0.7066295, Rsquared=0.5056397, MAE= 0.5236853 
+gbm_results <- postResample(pred = gbm_predictions, obs = test$ph)
+gbm_results
 ```
 
 
@@ -648,15 +707,22 @@ Encode categorical variables using one-hot encoding.
 
 ```{r}
 set.seed(547)
-svr_model <- train(
-  PH ~ ., data = train, method = "svmRadial",
-  trControl = control,
-  tuneLength = 5
-)
-print(svr_model)
-svr_pred <- predict(svr_model, test)
-svr_rmse <- sqrt(mean((svr_pred - test$PH)^2))
-print(paste("SVR RMSE:", svr_rmse))
+#Train SVM
+svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
+svmModel <- train(ph ~ ., data = train, 
+                  method = "svmRadial", 
+                  tuneGrid = svmGrid,
+                  trControl = control
+                  )
+
+#sigma = 0.01 C = 10 RMSE=0.6112615 R2=0.6418196 MAE=0.4952609
+svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
+svm_tune
+
+svmPred <- predict(svmModel, newdata = test)
+#RMSE=0.5578873 R2=0.7302899 MAE=0.4038730
+svm_results <- postResample(pred = svmPred, obs = test$ph)
+svm_results
 ```
 
 
@@ -670,35 +736,64 @@ Impute missing values.
 
 ```{r}
 set.seed(547)
-nn_model <- train(
-  PH ~ ., data = train, method = "nnet",
-  trControl = control,
-  tuneLength = 5,
-  linout = TRUE, # For regression
-  trace = FALSE
-)
-print(nn_model)
-nn_pred <- predict(nn_model, test)
-nn_rmse <- sqrt(mean((nn_pred - test$PH)^2))
-print(paste("Neural Network RMSE:", nn_rmse))
+nnetGrid <- expand.grid(.decay = c(0, 0.01, 0.1), .size = 1:10, .bag = FALSE)
+
+nnetModel <- train(ph ~ ., data = train, 
+                   method = "avNNet",
+                   tuneGrid = nnetGrid,
+                   trControl = control,
+                   linout = TRUE,
+                   trace = FALSE)  
+
+#size = 4, decay = 0.01 and bag = FALSE RMSE=0.5896897 R2=0.6694208 MAE=0.4743314
+nnet_tune <- nnetModel$results[nnetModel$results$size == nnetModel$bestTune$size & nnetModel$results$decay == nnetModel$bestTune$decay, ]
+nnet_tune
+
+nnetPred <- predict(nnetModel, newdata = test)
+#RMSE=0.6831675 R2=0.5382843 MAE=0.4942331 
+nnet_results <- postResample(pred = nnetPred, obs = test$ph)
+nnet_results
 
 ```
 
-**K-Nearest Neighbors (KNN) Regression**
-
-Preparation:  
-Standardize or normalize numerical predictors for distance-based calculations.  
-Impute missing values. 
+**MARS**
 
 ```{r}
-set.seed(547)
-knn_model <- train(
-  PH ~ ., data = train, method = "knn",
-  trControl = control,
-  tuneLength = 5
+set.seed(547) 
+#Train MARS
+marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
+
+marsModel <- train(ph ~ ., data = train, 
+                   method = "earth",
+                   tuneGrid = marsGrid,
+                   trControl = control
 )
-print(knn_model)
-knn_pred <- predict(knn_model, test)
-knn_rmse <- sqrt(mean((knn_pred - test$PH)^2))
-print(paste("KNN RMSE:", knn_rmse))
+
+
+#nprune = 4 degree = 1 RMSE=0.6399415 R2=0.6092022 MAE=0.5200138
+mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
+mars_tune
+
+marsPred <- predict(marsModel, newdata = test)
+#RMSE=0.6625520 R2=0.5754748 MAE=0.5293301 
+mars_results <- postResample(pred = marsPred, obs = test$ph)
+mars_results
 ```
+
+
+Analyze NAs for PH, they are all in brand B.
+
+Analyze NAs for Brand code.
+
+Do anything with brand B being represented the most?
+
+Anything to do with the outliers?
+
+There are binomial distributions, anything to do with them?
+
+Do I need to use zeroVar to remove variables? VIF? PCA?
+
+MFR remove?
+
+
+Analyze NAs for PH, they are all in brand B. What to do? Analyze NAs for Brand code. Do anything with brand B being represented the most? Anything to do with the outliers for PH or any other variables?  There are binomial distributions for some variable, check for what variables, anything to do with them?
