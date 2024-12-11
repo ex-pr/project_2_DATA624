@@ -655,7 +655,8 @@ getDoParWorkers()  # This should return the number of cores in use
 ```
 
 ```{r}
-set.seed(547)
+#set.seed(547)
+set.seed(123)
 trainIndex <- createDataPartition(beverage_imputed$ph, p = 0.8, list = FALSE)
 train_imputed <- beverage_imputed[trainIndex, ]
 test_imputed <- beverage_imputed[-trainIndex, ]
@@ -669,7 +670,8 @@ eval_imputed <- subset(eval_imputed, select = -ph)
 
 ```{r}
 #Data with new features
-set.seed(547)
+#set.seed(547)
+set.seed(123)
 trainIndex <- createDataPartition(beverage_featured$ph, p = 0.8, list = FALSE)
 train_featured <- beverage_featured[trainIndex, ]
 test_featured <- beverage_featured[-trainIndex, ]
@@ -700,8 +702,8 @@ Impute missing values for predictors for improved accuracy.
 can handle multicollinearity 
 
 ```{r}
-set.seed(547)
-
+#set.seed(547)
+set.seed(123)
 rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
 rf_model <- train(ph ~ ., data = train_imputed, 
                   method = "rf",
@@ -710,13 +712,13 @@ rf_model <- train(ph ~ ., data = train_imputed,
                   tuneGrid = rfGrid,
                   importance = TRUE) 
 
-#mtry=10, RMSE=0.1014536, R2=0.6759499, MAE=0.07363036
+#mtry=10, RMSE=0.1012154, R2=0.6745374, MAE=0.07393928
 rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
 rf_tune
 
 rf_pred <- predict(rf_model, newdata = test_imputed)
 
-#RMSE=0.10364526, R2=0.631224687. MAE= 0.07524682
+#RMSE=0.10027544, R2=0.69053772 MAE= 0.07212886
 rf_results <- postResample(pred = rf_pred, obs = test_imputed$ph)
 rf_results
 ```
@@ -760,7 +762,8 @@ Scaling is typically not required, but imputing missing values improves performa
 can handle multicollinearity 
 
 ```{r}
-set.seed(547)
+#set.seed(547)
+set.seed(123)
 gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
 gbm_model <- train(ph ~ ., data = train_imputed, 
                    method = "gbm", 
@@ -769,13 +772,13 @@ gbm_model <- train(ph ~ ., data = train_imputed,
                    trControl = control,
                    verbose = FALSE)
 
-#shrinkage=0.01, interaction.depth=7, n.minobsinnode=5, n.trees=1000, RMSE=0.11086, R2=0.5966163, MAE=0.0838286
+#shrinkage=0.01, interaction.depth=7, n.minobsinnode=10, n.trees=1000, RMSE=0.1116662, R2=0.5845802, MAE=0.08419827
 gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
 gbm_tune
 
 gbm_predictions <- predict(gbm_model, newdata = test_imputed)
 
-#RMSE=0.11417525, Rsquared=0.54005673, MAE= 0.08642612
+#RMSE=0.10565038, Rsquared=0.64276042, MAE= 0.07950506 
 gbm_results <- postResample(pred = gbm_predictions, obs = test_imputed$ph)
 gbm_results
 ```
@@ -821,7 +824,8 @@ Impute missing values.
 
 
 ```{r}
-set.seed(547)
+#set.seed(547)
+set.seed(123)
 nnetGrid <- expand.grid(.decay = c(0, 0.01, 0.1), .size = 1:10, .bag = FALSE)
 
 nnetModel <- train(ph ~ ., data = train_imputed, 
@@ -832,12 +836,12 @@ nnetModel <- train(ph ~ ., data = train_imputed,
                    linout = TRUE,
                    trace = FALSE)  
 
-#size = 10, decay = 0 and bag = FALSE RMSE=0.1152809 R2=0.5613684 MAE=0.08483058
+#size = 10, decay = 0 and bag = FALSE RMSE=0.1149139 R2=0.5559424 MAE=0.08557545
 nnet_tune <- nnetModel$results[nnetModel$results$size == nnetModel$bestTune$size & nnetModel$results$decay == nnetModel$bestTune$decay, ]
 nnet_tune
 
 nnetPred <- predict(nnetModel, newdata = test_imputed)
-#RMSE=0.11742502 R2=0.51488013 MAE=0.08529185
+#RMSE=0.11178875 R2=0.58921628 MAE=0.08249794 
 nnet_results <- postResample(pred = nnetPred, obs = test_imputed$ph)
 nnet_results
 
@@ -881,7 +885,8 @@ Standardize numerical predictors to avoid dominance by variables with larger sca
 Encode categorical variables using one-hot encoding.  
 
 ```{r}
-set.seed(547)
+#set.seed(547)
+set.seed(123)
 #Train SVM
 svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
 svmModel <- train(ph ~ ., data = train_featured, 
@@ -891,12 +896,12 @@ svmModel <- train(ph ~ ., data = train_featured,
                   trControl = control
                   )
 
-#sigma = 0.1 C = 1 RMSE=0.1174607 R2=0.5438569 MAE=0.0864932
+#sigma = 0.1 C = 1 RMSE=0.1183132 R2=0.530464 MAE=0.08760546
 svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
 svm_tune
 
 svmPred <- predict(svmModel, newdata = test_featured)
-#RMSE=0.11798682 R2=0.50619395 MAE=0.08546282
+#RMSE=0.11812221 R2=0.54019858 MAE=0.08580952
 svm_results <- postResample(pred = svmPred, obs = test_featured$ph)
 svm_results
 ```
@@ -932,35 +937,11 @@ importance_svm
 plot(importance_svm, top = 10, main = "top 10 predictors")
 ```
 
-
-```{r}
-set.seed(547)
-#Train SVM
-svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
-svmModel <- train(ph ~ ., data = train_imputed, 
-                  method = "svmRadial", 
-                  preProc = c("center", "scale"),
-                  tuneGrid = svmGrid,
-                  trControl = control
-                  )
-
-#sigma = 0.1 C = 1 RMSE=0.1207946 R2=0.520661 MAE=0.08977349
-svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
-svm_tune
-
-svmPred <- predict(svmModel, newdata = test_imputed)
-#RMSE=0.11921656 R2=0.49670669 MAE=0.08745773 
-svm_results <- postResample(pred = svmPred, obs = test_imputed$ph)
-svm_results
-```
-
-
-
-
 **MARS**
 
 ```{r}
-set.seed(547) 
+#set.seed(547) 
+set.seed(123)
 #Train MARS
 marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
 
@@ -972,12 +953,12 @@ marsModel <- train(ph ~ ., data = train_featured,
 )
 
 
-#nprune = 20 degree = 2 RMSE=0.1270379 R2=0.4689127 MAE=0.09637897
+#nprune = 20 degree = 2 RMSE=0.1263193 R2=0.4646403 MAE=0.09517493
 mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
 mars_tune
 
 marsPred <- predict(marsModel, newdata = test_featured)
-#RMSE=0.12849895 R2=0.41981463 MAE=0.09603593 
+#RMSE=0.12625382 R2=0.47430313 MAE=0.09277686
 mars_results <- postResample(pred = marsPred, obs = test_featured$ph)
 mars_results
 ```
@@ -985,7 +966,8 @@ mars_results
 
 ```{r}
 #No new features
-set.seed(547) 
+#set.seed(547) 
+set.seed(123)
 #Train MARS
 marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
 
@@ -997,12 +979,12 @@ marsModel <- train(ph ~ ., data = train_imputed,
 )
 
 
-#nprune = 20 degree = 2 RMSE=0.1266452 R2=0.472824 MAE=0.09637897
+#nprune = 20 degree = 2 RMSE=0.1268247 R2=0.4605546 MAE=0.0968188
 mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
 mars_tune
 
 marsPred <- predict(marsModel, newdata = test_imputed)
-#RMSE=0.12620060 R2=0.44103613 MAE=0.09603593 
+#RMSE=0.1236011 R2=0.4962139 MAE=0.0914482 
 mars_results <- postResample(pred = marsPred, obs = test_imputed$ph)
 mars_results
 ```
@@ -1037,33 +1019,38 @@ gridExtra::grid.arrange(p1, p2, ncol = 2)
 ```{r}
 set.seed(547) 
 xgbGrid <- expand.grid(
-  nrounds = seq(100, 500, by = 100),     # Fewer boosting iterations
-  eta = c(0.01, 0.1),                   # Fewer learning rates
-  max_depth = c(3, 6),                  # Smaller range of tree depths
-  gamma = c(0, 1),                      # Fewer gamma values
-  colsample_bytree = c(0.8),            # Single value for simplicity
-  min_child_weight = c(1, 5),           # Fewer options
-  subsample = c(0.8)                    # Single value for simplicity
+  nrounds = seq(100, 700, by = 100),     # Broader range for boosting iterations
+  eta = c(0.01, 0.1),             # Slightly broader learning rates
+  max_depth = c(3, 5, 7),               # Broader range for tree depth
+  gamma = c(0, 0.5, 1),                 # Broader gamma values for regularization
+  colsample_bytree = c(0.7, 0.8, 1),    # Expanded values for column sampling
+  min_child_weight = c(1, 3, 5),        # Broader range for child weight
+  subsample = c(0.7, 0.8, 0.9)          # Broader range for subsampling
 )
 
 # Train the XGBoost model
-xgb_model <- train(
-  ph ~ ., 
-  data = train_imputed, 
+xgb_model <- train(ph ~ ., data = train_imputed, 
   method = "xgbTree",
-  preProc = c("center", "scale"), #tuneGrid = xgbGrid,
+  preProc = c("center", "scale"), 
+  tuneGrid = xgbGrid,
   trControl = control
 )
 
-# View the best model parameters
-xgb_model$bestTune
+#RMSE=0.1023946   Rsquared  =0.6527386      MAE =0.07495757
+xgboost_tune <- xgb_model$results[xgb_model$results$max_depth == xgb_model$bestTune$max_depth & xgb_model$results$gamma == xgb_model$bestTune$gamma & xgb_model$results$nrounds == xgb_model$bestTune$nrounds & xgb_model$results$min_child_weight == xgb_model$bestTune$min_child_weight & xgb_model$results$eta == xgb_model$bestTune$eta, ]
+xgboost_tune
 
 # Predictions
 xgb_predictions <- predict(xgb_model, newdata = test_imputed)
 
-# Evaluate the model
+# RMSE=0.10554969   Rsquared  =0.60479526      MAE =0.07647919
+  
 xgb_results <- postResample(pred = xgb_predictions, obs = test_imputed$ph)
 xgb_results
+```
+
+```{r}
+stopCluster(cl)
 ```
 
 
@@ -1111,7 +1098,13 @@ eval_imputed_pred$ph_pred <- eval_pred
 
 #Save to Excel
 write_xlsx(eval_imputed_pred, "eval_imputed_pred.xlsx")
-write_xlsx(eeval_results, "ph_predictions.xlsx")
+write_xlsx(eval_results, "ph_predictions.xlsx")
+```
+
+
+```{r}
+write.csv(beverage_imputed,"beverage_imputed.csv", row.names = F)
+write.csv(beverage_featured,"beverage_featured.csv", row.names = F)
 ```
 # 5. Conclusion
 
@@ -1141,3 +1134,121 @@ Not include Hyd Pressure 2, Hyd Pressure 3? There are two very near consecutive 
 
 
 Analyze NAs for PH, they are all in brand B. What to do? Analyze NAs for Brand code. Do anything with brand B being represented the most? Anything to do with the outliers for PH or any other variables?  There are binomial distributions for some variable, check for what variables, anything to do with them?
+
+
+```{r}
+set.seed(123)
+
+df_1 <- beverage_imputed %>%
+  mutate(
+    # Interaction among positively correlated features
+    bowl_filler = bowl_setpoint * filler_level,
+    bowl_pressure = bowl_setpoint * pressure_vacuum,
+    filler_pressure = filler_level * pressure_vacuum,
+    
+    # Interaction between positive and negative correlations
+    bowl_mnf_flow = bowl_setpoint * mnf_flow,
+    filler_usage = filler_level * usage_cont,
+    pressure_usage = pressure_vacuum * usage_cont,
+    
+    # Interaction among negatively correlated features
+    mnf_usage = mnf_flow * usage_cont,
+    mnf_pressure = mnf_flow * pressure_setpoint,
+    
+    # Ratios for potential nonlinear relationships
+    pressure_temp_ratio = pressure_vacuum / temperature,
+    filler_mnf_ratio = filler_level / mnf_flow
+  )
+
+correlations <- cor(df_1 %>% select(starts_with("bowl_"), starts_with("filler_"), ph), use = "complete.obs")
+print(correlations["ph", ])
+
+glm_model <- glm(
+  ph ~ bowl_filler + bowl_pressure + filler_pressure +
+       bowl_mnf_flow + filler_usage + pressure_usage +
+       mnf_usage + mnf_pressure + pressure_temp_ratio + filler_mnf_ratio,
+  data = df_1
+)
+summary(glm_model)
+
+# Prepare data
+interaction_data <- df_1 %>% select(ph, starts_with("bowl_"), starts_with("filler_"))
+rf_model <- train(
+  ph ~ ., data = interaction_data,
+  method = "rf",
+  importance = TRUE
+)
+
+# Variable importance
+importance <- varImp(rf_model)
+print(importance)
+```
+
+```{r}
+df_1 <- df_1 %>%
+  select(-bowl_setpoint, -filler_level, -bowl_filler, -bowl_pressure, -bowl_mnf_flow, -mnf_usage)
+```
+
+
+
+```{r}
+set.seed(123)
+train_df_idx <- createDataPartition(df_1$ph, p = 0.8, list = FALSE)
+train_df <- df_1[train_df_idx, ]
+test_df <- df_1[-train_df_idx, ]
+```
+
+
+
+```{r}
+#set.seed(547)
+set.seed(123)
+rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
+rf_model <- train(ph ~ ., data = train_df, 
+                  method = "rf",
+                  preProc = c("center", "scale"),
+                  trControl = control,
+                  tuneGrid = rfGrid,
+                  importance = TRUE) 
+
+#mtry=10, RMSE=0.1006935, R2=0.6761629, MAE=0.07335081
+rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
+rf_tune
+
+rf_pred <- predict(rf_model, newdata = test_df)
+
+#RMSE=0.10009144, R2=0.68986540 MAE= 0.07124392 
+rf_results <- postResample(pred = rf_pred, obs = test_df$ph)
+rf_results
+
+```
+
+
+```{r}
+#set.seed(547)
+set.seed(123)
+gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
+gbm_model <- train(ph ~ ., data = train_df, 
+                   method = "gbm", 
+                   preProc = c("center", "scale"),
+                   tuneGrid = gbmGrid, 
+                   trControl = control,
+                   verbose = FALSE)
+
+#shrinkage=0.01, interaction.depth=7, n.minobsinnode=10, n.trees=1000, RMSE=0.1111007, R2= 0.5883022, MAE=0.08336697
+gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
+gbm_tune
+
+gbm_predictions <- predict(gbm_model, newdata = test_df)
+
+#RMSE=0.10517869, Rsquared=0.64448922, MAE= 0.07763472  
+gbm_results <- postResample(pred = gbm_predictions, obs = test_df$ph)
+gbm_results
+```
+
+```{r}
+plot(resid(rf_model), train_df$ph, xlab = "Residuals", ylab = "PH", main = "Residuals vs PH")
+
+car::vif(glm(ph ~ ., data = train_df))
+```
+
