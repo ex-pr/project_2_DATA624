@@ -23,7 +23,7 @@ body {
 #chunks
 knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, fig.height=5, fig.align='center')
 
-#install.packages("factoextra")
+#install.packages("FSAmisc")
 
 #libraries
 library(tidyverse)
@@ -60,6 +60,7 @@ library(kableExtra)
 library(factoextra)
 library(FactoMineR)
 library(naniar)
+#library(FSAmisc)
 ```
 
 <p align="center">
@@ -301,7 +302,7 @@ Group categorical-like numeric variables (e.g., PSC CO2, Carb Volume) to improve
 
 ```{r}
 numeric_vars <- beverage_df %>% 
-  select(where(is.numeric)) %>% 
+  dplyr::select(where(is.numeric)) %>% 
   names()
 
 #3 groups
@@ -311,7 +312,7 @@ group_3 <- numeric_vars[21:32]
 
 #Group 1 plot
 beverage_df %>%
-  select(all_of(group_1)) %>%
+  dplyr::select(all_of(group_1)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
   geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
@@ -321,7 +322,7 @@ beverage_df %>%
 
 # Group 2 Plot
 beverage_df %>%
-  select(all_of(group_2)) %>%
+  dplyr::select(all_of(group_2)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
   geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
@@ -331,7 +332,7 @@ beverage_df %>%
 
 # Group 3 Plot
 beverage_df %>%
-  select(all_of(group_3)) %>%
+  dplyr::select(all_of(group_3)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
   geom_histogram(binwidth = 0.5, fill = "lightgreen", color = "black") +
@@ -353,7 +354,7 @@ Combine strongly correlated (e.g., Carb Rel, Carb Flow, Density) or reduce using
 
 ```{r}
 #PCA
-pca <- PCA(beverage_df %>% select(where(is.numeric)) %>% na.omit(), scale.unit = TRUE)
+pca <- PCA(beverage_df %>% dplyr::select(where(is.numeric)) %>% na.omit(), scale.unit = TRUE)
 ```
 
 
@@ -375,8 +376,8 @@ boxplot(beverage_df$PH, main = "Boxplot of PH", horizontal = TRUE)
 
 ```{r}
 numeric_vars <- beverage_df %>%
-  select(where(is.numeric)) %>%
-  select(-PH) %>%
+  dplyr::select(where(is.numeric)) %>%
+  dplyr::select(-PH) %>%
   names()
 
 for (var in numeric_vars) {
@@ -407,7 +408,7 @@ Interaction terms between Bowl Setpoint and Filler Level or between Pressure Vac
 
 ```{r corr}
 tst <- beverage_df %>% 
-  select(where(is.numeric))
+  dplyr::select(where(is.numeric))
 #Correlation with PH
 cor_table <- cor(drop_na(tst))[, "PH"] %>%
   as.data.frame() %>%
@@ -444,30 +445,566 @@ corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.
 
 
 ```{r}
-#beverage_df <- beverage_df %>%
-#  mutate(CarbPressure_CarbTemp = `Carb Pressure` * `Carb Temp`)
-
-#beverage_df <- beverage_df %>%
-#  mutate(log_CarbFlow = log(`Carb Flow` + 1))
-```
-
-```{r}
-#beverage_df <- beverage_df %>%
-#  mutate(PH = ifelse(PH > quantile(PH, 0.99), quantile(PH, 0.99), PH))
-```
-
-```{r}
 clean_bev <- beverage_df
+
+nearzero <- nearZeroVar(clean_bev, saveMetrics= TRUE)
+nearzero[nearzero$nzv,][1:5,] %>% drop_na()
+
+
 ```
 
+MFR shows 7% missing - we'll remove this feature
+Hyd Pressure1 shows near zero variance - we can remove this feature
+
+```{r}
+# Remove 2 fields
+cleantrain <- clean_bev %>%
+  dplyr::select(-c(MFR, `Hyd Pressure1`))
+
+# remove the fields from our evaluation data
+cleaneval <- eval_df %>%
+  dplyr::select(-c(MFR, `Hyd Pressure1`))
+
+cleaneval<- cleaneval%>%
+  dplyr::select(-PH)
+
+```
+
+```{r}
+
+set.seed(100)
+
+# drop rows with missing PH
+cleantrain <- cleantrain  %>%
+  filter(!is.na(PH))
+
+# Change Brand Code missing to 'Unknown' in our training data
+brandcode <- cleantrain %>%
+  dplyr::select(`Brand Code`) %>%
+  replace_na(list(`Brand Code` = 'Unknown'))
+
+cleantrain$`Brand Code` <- brandcode$`Brand Code`
+
+# Change Brand Code missing to 'Unknown' 
+brandcodeev <- cleaneval  %>%
+  dplyr::select(`Brand Code`) %>%
+  replace_na(list(`Brand Code` = 'Unknown'))
+
+cleaneval$`Brand Code` <- brandcodeev$`Brand Code`
+
+# change an unseen data as well
+codes <- unique(cleantrain$`Brand Code`)
+
+cleaneval <- cleaneval %>%
+  mutate(`Brand Code`  = if_else(`Brand Code` %in% codes, `Brand Code`, 'Unknown'))
+
+# Use the kNN imputing method from VIM package to impute missing values in our training data
+cleantrain <- cleantrain %>% 
+  kNN(k=10) %>%
+  dplyr::select(colnames(cleantrain))
+
+# # Use the kNN imputing method from VIM package to impute missing values in our training data
+cleaneval<- cleaneval %>%
+  kNN(k=10) %>%
+  dplyr::select(colnames(cleaneval))
+
+```
+
+# Feature Engineering 
+
+Add dummy variables for Brand Code
+
+```{r}
+cleantrain_dummy <- dummyVars(PH ~ `Brand Code`, data = cleantrain)
+dummies <- predict(cleantrain_dummy, cleantrain)
 
 
+dummy_cols <- sort(colnames(dummies))
+
+# columns are sorted 
+dummies <- as.tibble(dummies) %>%
+  dplyr::select(dummy_cols)
+
+# remove the original categorical feature
+cleantrain <- cleantrain %>%
+  dplyr::select(-`Brand Code`)
+
+# add the new dummy columns to  train
+cleantrain <- cbind(dummies, cleantrain)
+
+# -----
+# Evaluation data - Convert our `Brand Code` column into a set of dummy variables
+
+cleaneval$PH <- 1
+eval_dummies <- predict(cleantrain_dummy, cleaneval)
+
+# if not found add 0
+
+for (c in dummy_cols) {
+  if (!(c %in% colnames(eval_dummies))) {
+    eval_dummies[c] <- 0
+  }
+}
+
+
+dummy_cols <- sort(colnames(eval_dummies))
+eval_dummies <- as.tibble(eval_dummies) %>%
+  dplyr::select(dummy_cols)
+
+# remove the original categorical feature
+cleaneval <- cleaneval %>%
+  dplyr::select(-c(`Brand Code`, PH))
+
+# add the new dummy columns to our main eval dataframe
+cleaneval <- cbind(eval_dummies, cleaneval)
+```
+
+```{r}
+
+library(caret)
+preProcValues2 <- preProcess(cleantrain, method = "BoxCox")
+train_bc <- predict(preProcValues2, cleantrain)
+
+# preProcValues3 <- preProcess(cleaneval, method = "BoxCox")
+# test_bc <- predict(preProcValues3, cleaneval )
+# preProcValues2
+# preProcValues3
+
+```
+
+```{r}
+ #Prepare data for ggplot
+gatherdf <- train_bc %>% 
+  dplyr::select(-c(PH)) %>%
+  gather(key = 'variable', value = 'value')
+
+# Histogram plots of each variable
+ggplot(gatherdf) + 
+  geom_histogram(aes(x=value, y = after_stat(density)), bins=50) + 
+  geom_density(aes(x=value), color='blue') +
+  facet_wrap(. ~variable, scales='free', ncol=5)
+
+
+```
+
+# Build Models
 
 - Start with Linear Regression after transformation and dimensionality reduction.
 - Random Forest or Gradient Boosting for multicollinearity, so no dimensionality reduction but informed variable selection. 
 -SVM  
-- Regularized regression models, need to remove redundant features to reduce noise.  
+- Regularized regression models, need to remove redundant features to reduce noise. 
 
 
 
+```{r}
+set.seed(100)
 
+# utilizing one dataset for all four models
+set <- createDataPartition(train_bc$PH, p=0.7, list=FALSE)
+train <- train_bc[set,]
+test <- train_bc[-set,]
+
+
+```
+
+# Model 1 - Linear Model on Train data
+
+```{r}
+set.seed(100)
+
+#install.packages("doParallel")
+library(doParallel)
+library(MASS)
+
+cl <- makePSOCKcluster(5)
+registerDoParallel(cl)
+set.seed(200)
+
+
+model1_full_lm <- lm(PH ~ ., train )
+
+# model1_full_lm  - (using stepAIC)
+model1 <- stepAIC(model1_full_lm , direction = "both",
+                         scope = list(upper = model1_full_lm , lower = ~ 1),
+                         scale = 0, trace = FALSE)
+
+stopCluster(cl)
+
+# Display Model 1 Summary
+(lms <- summary(model1))
+
+confint(model1)
+
+```
+
+```{r}
+set.seed(100)
+
+library(car)
+plot(model1)
+
+
+```
+
+```{r}
+set.seed(100)
+#install.packages("regclass")
+library(regclass)
+
+VIF(model1)
+
+```
+
+# Model 1 - Linear Model on Test data
+
+```{r}
+set.seed(100)
+
+# Predict df_test and calculate performance
+model1predict <- predict(model1, test)
+
+# Merge the results into a data frame called results 
+results <- data.frame()
+results <- data.frame(t(postResample(pred = model1predict, obs = test$PH))) %>% 
+  mutate(Model = "Mutiple Regression") %>% 
+  rbind(results)
+
+knitr::kable(results)
+```
+
+# Ridge Regression
+
+```{r}
+
+#install.packages("glmnet")
+library(glmnet)
+library(doParallel)
+cl2 <- makePSOCKcluster(5)
+registerDoParallel(cl2)
+set.seed(200)
+
+# to find the right lambda using cv.glmnet
+xtrain <- model.matrix(PH ~ ., data = train)
+xtest <- model.matrix(PH ~ ., data = test)
+
+cv.glmnet <- cv.glmnet(xtrain, train$PH, alpha = 0)
+
+ridgemdl <- glmnet(xtrain, train$PH, alpha = 0, lambda = cv.glmnet$lambda.min)
+
+stopCluster(cl2)
+
+summary(ridgemdl)
+
+
+
+```
+
+```{r}
+# Predict df_test and calculate performance
+ridge <- predict(ridgemdl, xtest)
+
+results <- data.frame(t(postResample(pred = ridge, obs = test$PH))) %>% 
+    dplyr::mutate(Model = "Ridge Regression") %>% rbind(results)
+
+knitr::kable(results)
+
+```
+
+# Elastic Net
+
+```{r}
+
+cl4 <- makePSOCKcluster(5)
+registerDoParallel(cl4)
+set.seed(200)
+
+# training the elastic net regression model using train
+enet_model <- train(
+                        PH ~ ., data = train, method = "glmnet",
+                        trControl = trainControl("repeatedcv", repeats = 8),
+                        tuneLength = 4
+)
+
+stopCluster(cl4)
+
+summary(enet_model)
+
+plot(enet_model)
+
+```
+
+```{r}
+# Make predictions
+enet_pred <- predict(enet_model, test)
+
+
+results <- data.frame(t(postResample(pred=enet_pred, obs=test$PH))) %>% 
+    mutate(Model = "ElasticNet Regression") %>% rbind(results)
+
+knitr::kable(results)
+```
+
+
+# Neural Net (avNNET)
+
+```{r}
+
+cl5 <- makePSOCKcluster(5)
+registerDoParallel(cl5)
+set.seed(200)
+
+# avvnet
+nnetGrid <- expand.grid(.decay = c(0.1, 0.5), .size = c(1,10), .bag = FALSE)
+
+nnet.mdl <- train(PH ~ ., data = train, method = "avNNet", preProcess = c("center", 
+    "scale"), tuneGrid = nnetGrid, trControl = trainControl(method = "repeatedcv", 
+    repeats = 1), trace = FALSE, linout = TRUE, maxit = 500)
+
+stopCluster(cl5)
+
+summary(nnet.mdl)
+
+plot(nnet.mdl)
+```
+
+
+```{r}
+
+# Predict df_test and calculate performance
+nnetpred <- predict(nnet.mdl, newdata = test)
+results <- data.frame(t(postResample(pred = nnetpred, obs = test$PH))) %>% 
+    mutate(Model = "Neural Network (avNNET )") %>% rbind(results)
+
+knitr::kable(results)
+
+```
+
+# KNN
+
+```{r}
+
+cl6 <- makePSOCKcluster(5)
+registerDoParallel(cl6)
+set.seed(200)
+
+knnMdl <- train(PH ~ ., data = train, method = "knn", preProc = c("center","scale"), tuneLength = 10)
+
+stopCluster(cl6)
+
+summary(knnMdl)
+
+plot(knnMdl)
+
+
+```
+
+
+```{r}
+# Predict df_test and calculate performance
+knn <- predict(knnMdl, newdata = test)
+results <- data.frame(t(postResample(pred = knn, obs = test$PH))) %>% 
+    mutate(Model = "k-Nearest Neighbors(kNN)") %>% rbind(results)
+
+knitr::kable(results)
+```
+
+#GBM
+
+```{r}
+
+library(caret)
+train1 <- train_bc %>% dplyr::select (-PH)
+
+X.train <- train1[set, ]
+y.train <- train_bc$PH[set]
+X.test <- train1[-set, ]
+y.test <- train_bc$PH[-set]
+
+cl7 <- makePSOCKcluster(5)
+registerDoParallel(cl7)
+set.seed(200)
+
+grid <- expand.grid(n.trees = c(50, 100, 150, 200),
+                    interaction.depth = c(1, 5, 10, 15),
+                    shrinkage = c(0.01, 0.1, 0.5),
+    n.minobsinnode = c(5, 10, 15))
+
+gbm_Mdl <- train(x = X.train,
+                   y = y.train,
+                   method = "gbm",
+                   tuneGrid = grid,
+                   verbose = FALSE
+)
+
+stopCluster(cl7)
+summary(gbm_Mdl )
+
+
+
+```
+
+```{r}
+
+plot(gbm_Mdl )
+gbm_Mdl$bestTune
+gbm_Mdl$finalModel
+
+```
+
+```{r}
+
+# Predict df_test and calculate performance
+
+gbm <- predict(gbm_Mdl, newdata = test)
+# y_pred <- predict(xgb,  data.matrix(X.test[,-1]))
+results <- data.frame(t(postResample(pred = gbm, obs = test$PH))) %>% mutate(Model = "Generalized Boosted Models") %>% rbind(results)
+
+knitr::kable(results)
+
+```
+
+
+```{r}
+
+options(max.print = 1e+06)
+
+cl8 <- makePSOCKcluster(5)
+registerDoParallel(cl8)
+set.seed(200)
+
+mars.grid <- expand.grid(.degree = 1:2, .nprune = 2:15)
+
+mars.model <- train(x = X.train, y = y.train, method = "earth", tuneGrid = mars.grid, 
+    preProcess = c("center", "scale"), tuneLength = 10)
+
+stopCluster(cl8)
+
+summary(mars.model)
+
+```
+
+
+```{r}
+
+# Predict df_test and calculate performance
+mars <- predict(mars.model, newdata = X.test)
+results <- data.frame(t(postResample(pred = mars, obs = y.test))) %>% mutate(Model = "Multivariate Adaptive Reg
+                                                                             ression Splines (MARS)") %>% rbind(results)
+
+knitr::kable(results)
+
+```
+
+
+```{r}
+
+cl9 <- makePSOCKcluster(5)
+registerDoParallel(cl9)
+set.seed(200)
+
+cubist_Model <- train(x = X.train, y = y.train, method = "cubist")
+
+stopCluster(cl9)
+
+
+```
+
+
+
+```{r}
+# Predict df_test and calculate performance
+Cubist <- predict(cubist_Model, newdata = X.test)
+results <- data.frame(t(postResample(pred = Cubist, obs = y.test))) %>% mutate(Model = "Cubist Model") %>% rbind(results)
+
+knitr::kable(results)
+```
+
+
+```{r}
+
+set.seed(100)
+
+library(randomForest)
+
+rfModel <- randomForest(X.train, y.train,
+                        importance = TRUE,
+                        ntree = 1000)
+
+
+rfPred <- predict(rfModel, X.test)
+
+#postResample(rfPred, y.test)
+
+results <- data.frame(t(postResample(pred = rfPred, obs = y.test))) %>% mutate(Model = "Random Forsest") %>% rbind(results)
+
+knitr::kable(results)
+
+
+
+```
+
+```{r}
+rfImp <- varImp(rfModel, scale = TRUE) %>%
+  as.data.frame()
+
+rfImp %>%
+  arrange(-Overall) %>%
+  kable() %>% 
+  kable_styling() %>%
+  scroll_box()
+```
+
+```{r}
+varImpPlot(rfModel, sort = TRUE, n.var = 10)
+```
+
+```{r}
+top10 <- varImp(rfModel) %>%
+  filter(Overall < 57) %>%
+  arrange(-Overall) %>%
+  head(10)
+
+
+cleantrain %>% 
+  dplyr::select(c("PH", row.names(top10))) %>%
+  cor() 
+
+#%>% corrplot() + title("Correlation between PH and the Top 10 Numerical Variables")
+
+
+```
+
+```{r}
+
+stat
+
+```
+
+
+```{r}
+
+set.seed(100)
+library(mice)
+#install.packages("writexl")
+library(writexl)
+
+#head(test_bc)
+
+#test_predict <- predict(cubist_Model , newdata=cleaneval)
+
+#head(test_predict)
+
+eval_data <- cleaneval %>% mutate(across(where(is.numeric), ~replace_na(., median(., na.rm=TRUE))))
+
+ph_prediction <- predict(cubist_Model,eval_data)
+
+eval_data$ph <- ph_prediction
+head(eval_data)
+
+write_xlsx(eval_data, 'StudentEvaluation_final.xlsx')
+
+hist(eval_data$ph)
+  
+
+
+```
