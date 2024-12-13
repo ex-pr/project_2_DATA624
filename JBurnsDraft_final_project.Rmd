@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ---
 title: "Project 2: Predicting pH for ABC Beverage"
 author: 'Banu Boopalan, Molly Siebecker, Marley Myrianthopoulos, Jonathan Burns, Daria Dubovskaia'
@@ -25,6 +26,7 @@ knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, fig.height=5, fig
 
 #libraries
 library(tidyverse)
+library(MASS)
 library(summarytools)
 library(fpp3)
 library(readxl)
@@ -69,6 +71,15 @@ library(rpart.plot)
 </p>
 
 
+# Overview
+
+Assignment: This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH.
+
+Please use the historical data set I am providing. Build and report the factors in BOTH a technical and non-technical report.  I like to use Word and Excel. Please provide your non-technical report in a  business friendly readable document and your predictions in an Excel readable format. The technical report should show clearly the models you tested and how you selected your final approach.
+
+Please submit both Rpubs links and .rmd files or other readable formats for technical and non-technical reports.  Also submit the excel file showing the prediction of your models for pH.
+
+# 1. Data Exploration
 # Overview
 
 Assignment: This is role playing.  I am your new boss.  I am in charge of production at ABC Beverage and you are a team of data scientists reporting to me.  My leadership has told me that new regulations are requiring us to understand our manufacturing process, the predictive factors and be able to report to them our predictive model of PH.
@@ -336,8 +347,8 @@ Log or Box-Cox transformation for variables like MFR and Usage Cont to normalize
 
 ```{r}
 numeric_vars <- beverage_df %>% 
-  select(where(is.numeric)) %>% 
-  select(-PH) %>% 
+  dplyr::select(where(is.numeric)) %>% 
+  dplyr::select(-PH) %>% 
   names() 
 #3 groups
 group_1 <- numeric_vars[1:10]
@@ -356,9 +367,9 @@ group_2 <- c("Carb Volume", "Carb Rel", "Fill Ounces", "Oxygen Filler", "Density
 group_3 <- c("Mnf Flow", "Carb Flow", "Filler Level", "Filler Speed", "Hyd Pressure1", 
              "Hyd Pressure2", "Hyd Pressure3", "Hyd Pressure4", "MFR", "Bowl Setpoint")
 
-#Group 1 plot
+# Group 1 plot
 beverage_df %>%
-  select(all_of(group_1)) %>%
+  dplyr::select(all_of(group_1)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
   geom_histogram(binwidth = 0.3, fill = "lightgreen", color = "black") +
@@ -372,10 +383,9 @@ beverage_df %>%
 
 #Mnf Flow, Carb Flow, Filler Level, Filler Speed, Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4, MFR, Bowl Setpoint, MFR
 
-
-# Group 2 Plot
+# Group 2 plot
 beverage_df %>%
-  select(all_of(group_2)) %>%
+  dplyr::select(all_of(group_2)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
   geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
@@ -383,9 +393,9 @@ beverage_df %>%
   theme_minimal() +
   labs(title = "Distribution of Variables: Group 2")
 
-# Group 3 Plot
+# Group 3 plot
 beverage_df %>%
-  select(all_of(group_3)) %>%
+  dplyr::select(all_of(group_3)) %>%
   pivot_longer(cols = everything()) %>%
   ggplot(aes(value)) +
   geom_histogram(binwidth = 1, fill = "lightgreen", color = "black") +
@@ -451,9 +461,18 @@ Impact on pH: A higher flow rate may result in irregular mixing, reduced carbona
 
 
 ```{r corr}
-tst <- beverage_df %>% 
-  select(where(is.numeric))
-#Correlation with PH
+library(dplyr)
+library(tidyr)
+library(Hmisc)
+library(corrplot)
+library(knitr)
+library(kableExtra)
+
+# Select numeric columns
+tst <- beverage_df %>%
+  dplyr::select(where(is.numeric))
+
+# Correlation with PH
 cor_table <- cor(drop_na(tst))[, "PH"] %>%
   as.data.frame() %>%
   rownames_to_column(var = "Variable") %>%
@@ -465,13 +484,14 @@ kable(cor_table, "html", escape = F, col.names = c('Variable', 'Coefficient')) %
   column_spec(1, bold = T) %>%
   add_header_above(c("Table: Correlation with PH" = 2))
 
-#Corr matrix
+# Correlation matrix
 rcore <- rcorr(as.matrix(tst))
 coeff <- rcore$r
-#Filter to include only |r| > 0.1, the rest are 0
+
+# Filter to include only |r| > 0.1, the rest are 0
 filtered_coeff <- coeff
 filtered_coeff[abs(filtered_coeff) < 0.1] <- 0 
-coeff <- rcore$r
+
 corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.col = "black",
          type="upper", order="hclust", number.cex=0.45, diag=FALSE)
 ```
@@ -527,6 +547,35 @@ eval_df <- eval_df[, !zero_var$nzv]
 
 **Imputing missing values** mice() ?
 
+For Brand Code random forest imputation, for the rest - mice.
+
+```{r}
+library(dplyr)
+library(mice)
+
+set.seed(547)
+
+# Exclude Brand Code from the imputation
+beverage_mice <- beverage_df %>% dplyr::select(-brand_code)
+eval_mice <- eval_df %>% dplyr::select(-brand_code)
+
+# Apply MICE to train df
+imputed_train <- mice(beverage_mice, method = 'pmm', m = 5, seed = 547)
+
+# Extract the completed train df
+completed_train <- complete(imputed_train, 1)
+
+# Apply the same imputation model to evaluation data
+imputed_eval <- mice(eval_mice, method = 'pmm', m = 5, seed = 123)
+completed_eval <- complete(imputed_eval, 1)
+
+# Add the imputed columns back
+beverage_imputed <- cbind(completed_train, brand_code = beverage_df$brand_code)
+eval_imputed <- cbind(completed_eval, brand_code = eval_df$brand_code)
+```
+
+**Imputing missing values** mice() ?
+
 NA brand code to brand code “A”? 
 
 Change the Brand code to a factor variable
@@ -534,27 +583,6 @@ Change the Brand code to a factor variable
 Maybe log transf for outliers in Air Pressurer?
 
 For Brand Code random forest imputation, for the rest - mice.
-
-```{r}
-set.seed(547)
-#Exclude Brand Code from the imputation
-beverage_mice <- beverage_df %>% select(-brand_code)
-eval_mice <- eval_df %>% select(-brand_code)
-
-#Apply MICE to train df
-imputed_train <- mice(beverage_mice, method='pmm', m=5, seed=547)
-
-#Extract the completed train df
-completed_train <- complete(imputed_train, 1)
-
-# Apply the same imputation model to evaluation data
-imputed_eval <- mice(eval_mice, method='pmm', m=5, seed=123)
-completed_eval <- complete(imputed_eval, 1)
-
-#Add the imputed columns back
-beverage_imputed <- cbind(completed_train, brand_code = beverage_df$brand_code)
-eval_imputed <- cbind(completed_eval, brand_code = eval_df$brand_code)
-```
 
 ```{r}
 set.seed(547)
@@ -592,27 +620,28 @@ Combine strongly correlated (e.g., Carb Rel, Carb Flow, Density) or reduce using
 
 ```{r}
 set.seed(547)
-#Exclude PH and Brand Code
-pca_train <- beverage_imputed %>% select(-ph, -brand_code)
-pca_eval <- eval_imputed %>% select(-ph, -brand_code)
 
-#Centering, scaling, and PCA
+# Exclude PH and Brand Code
+pca_train <- beverage_imputed %>% dplyr::select(-ph, -brand_code)
+pca_eval <- eval_imputed %>% dplyr::select(-ph, -brand_code)
+
+# Centering, scaling, and PCA
 preproc_params <- preProcess(pca_train, method = c("center", "scale", "pca"), thresh = 0.90)
 
-#Transform train
+# Transform train
 train_preproc <- predict(preproc_params, newdata = pca_train)
 
-#Transform eval
+# Transform eval
 eval_preproc <- predict(preproc_params, newdata = pca_eval)
 
-#Add PH and Brand Code back
+# Add PH and Brand Code back
 beverage_pca <- cbind(train_preproc, ph = beverage_imputed$ph, brand_code = beverage_imputed$brand_code)
 eval_pca <- cbind(eval_preproc, ph = eval_imputed$ph, brand_code = eval_imputed$brand_code)
 
-#Access the PCA rotation matrix and cumulative variance explained
+# Access the PCA rotation matrix and cumulative variance explained
 pca_summary <- preproc_params$rotation 
 
-#Display PCA summary
+# Display PCA summary
 print("PCA Loadings:")
 print(pca_summary)
 ```
@@ -670,10 +699,17 @@ Binning: Bowl Setpoint, Filler Level.
 # 3. Build Models
 
 ```{r}
+# Load necessary library
+library(caret)
+library(Cubist)
+
+# Set seed for reproducibility
 set.seed(547)
+
+# Create training and testing datasets
 trainIndex <- createDataPartition(beverage_imputed$ph, p = 0.8, list = FALSE)
-train <- beverage_imputed[trainIndex, ]
-test <- beverage_imputed[-trainIndex, ]
+train_imputed <- beverage_imputed[trainIndex, ]
+test_imputed <- beverage_imputed[-trainIndex, ]
 
 #Setup cv
 control <- trainControl(method = "repeatedcv", number = 10, repeats = 3) 
@@ -691,8 +727,8 @@ eval_imputed <- subset(eval_imputed, select = -ph)
 ```{r}
 # Random Forest
 set.seed(547)
-rf_model <- train(ph ~ ., data = train, method = "rf", trControl = control)
-rf_predictions <- predict(rf_model, newdata = test)
+rf_model <- train(ph ~ ., data = train_imputed, method = "rf", trControl = control)
+rf_predictions <- predict(rf_model, newdata = test_imputed)
 rf_model
 
 ```
@@ -707,7 +743,7 @@ plot(varImp(rf_model))
 
 ```{r}
 # Create a data frame with actual and predicted values
-results <- data.frame(Actual = test$ph, Predicted = rf_predictions)
+results <- data.frame(Actual = test_imputed$ph, Predicted = rf_predictions)
 
 # Plot actual vs predicted values
 ggplot(results, aes(x = Actual, y = Predicted)) +
@@ -732,7 +768,7 @@ prp(rf_rpart, digits = 2, extra = 1)
 # Support Vector Machine
 set.seed(547)
 svm_model <- train(ph ~ ., data = train, method = "svmRadial", trControl = control)
-svm_predictions <- predict(svm_model, newdata = test)
+svm_predictions <- predict(svm_model, newdata = test_imputed)
 svm_model
 ```
 
@@ -761,26 +797,16 @@ ggplot(results, aes(x = Actual, y = Predicted)) +
 * committees  neighbors  RMSE       Rsquared   MAE 
 *20          9          0.1003004  0.6668151  0.07184388
 ```{r}
-# Load necessary library
-library(caret)
-library(Cubist)
 
-# Set seed for reproducibility
-set.seed(547)
-
-# Create training and testing datasets
-trainIndex <- createDataPartition(beverage_imputed$ph, p = 0.8, list = FALSE)
-train <- beverage_imputed[trainIndex, ]
-test <- beverage_imputed[-trainIndex, ]
 
 # Setup cross-validation
 control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
 
 # Train the Cubist model
-cubist_model <- train(ph ~ ., data = train, method = "cubist", trControl = control)
+cubist_model <- train(ph ~ ., data = test_imputed, method = "cubist", trControl = control)
 
 # Make predictions on the test set
-cubist_predictions <- predict(cubist_model, newdata = test)
+cubist_predictions <- predict(cubist_model, newdata = test_imputed)
 
 # Print the model summary
 print(cubist_model)
@@ -819,13 +845,7 @@ library(caret)
 library(randomForest)
 library(ggplot2)
 
-
 set.seed(547)
-
-# Create training and testing datasets
-trainIndex <- createDataPartition(beverage_imputed$ph, p = 0.8, list = FALSE)
-train <- beverage_imputed[trainIndex, ]
-test <- beverage_imputed[-trainIndex, ]
 
 control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
 
@@ -837,7 +857,7 @@ tuneGrid <- expand.grid(
 # Train the Random Forest model with hyperparameter tuning
 rf_model <- train(
   ph ~ ., 
-  data = train, 
+  data = train_imputed, 
   method = "rf", 
   trControl = control, 
   tuneGrid = tuneGrid,
@@ -845,11 +865,11 @@ rf_model <- train(
   nodesize = 5  # Minimum size of terminal nodes
 )
 
-rf_predictions <- predict(rf_model, newdata = test)
+rf_predictions <- predict(rf_model, newdata = test_imputed)
 
 print(rf_model)
 
-rf_metrics <- postResample(rf_predictions, test$ph)
+rf_metrics <- postResample(rf_predictions, test_imputed$ph)
 print(rf_metrics)
 
 
@@ -858,7 +878,7 @@ plot(rf_model)
 plot(varImp(rf_model))
 
 
-results <- data.frame(Actual = test$ph, Predicted = rf_predictions)
+results <- data.frame(Actual = test_imputed$ph, Predicted = rf_predictions)
 
 
 ggplot(results, aes(x = Actual, y = Predicted)) +
@@ -874,16 +894,11 @@ ggplot(results, aes(x = Actual, y = Predicted)) +
 *mtry  RMSE       Rsquared   MAE  
 *8     0.1021329  0.6749488  0.07447122
 ```{r}
-
+set.seed(547)
 library(caret)
 library(randomForest)
 library(ggplot2)
 
-set.seed(547)
-
-trainIndex <- createDataPartition(beverage_imputed$ph, p = 0.8, list = FALSE)
-train <- beverage_imputed[trainIndex, ]
-test <- beverage_imputed[-trainIndex, ]
 
 
 control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
@@ -897,7 +912,7 @@ preprocess_params <- c("center", "scale")
 
 rf_model <- train(
   ph ~ ., 
-  data = train, 
+  data = train_imputed, 
   method = "rf", 
   trControl = control, 
   tuneGrid = tuneGrid,
@@ -907,11 +922,11 @@ rf_model <- train(
 )
 
 
-rf_predictions <- predict(rf_model, newdata = test)
+rf_predictions <- predict(rf_model, newdata = test_imputed)
 
 print(rf_model)
 
-rf_metrics <- postResample(rf_predictions, test$ph)
+rf_metrics <- postResample(rf_predictions, test_imputed$ph)
 print(rf_metrics)
 
 plot(rf_model)
@@ -919,7 +934,7 @@ plot(rf_model)
 plot(varImp(rf_model))
 
 
-results <- data.frame(Actual = test$ph, Predicted = rf_predictions)
+results <- data.frame(Actual = test_imputed$ph, Predicted = rf_predictions)
 
 
 ggplot(results, aes(x = Actual, y = Predicted)) +
@@ -987,5 +1002,85 @@ ggplot(results, aes(x = Actual, y = Predicted)) +
   geom_abline(slope = 1, intercept = 0, color = "red") +
   labs(title = "Actual vs Predicted Values Random Forest", x = "Actual Values", y = "Predicted Values") +
   theme_minimal()
+```
+
+# YeoJohnson
+
+#  mtry      RMSE  Rsquared        MAE      RMSESD RsquaredSD       MAESD
+#5   10 0.1007123 0.6816836 0.07340712 0.008095794 0.04131284 0.004220479
+```{r}
+set.seed(123)
+rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
+
+rf_model <- train(ph ~ ., data = train, 
+                  method = "rf",
+                  preProc = c("YeoJohnson"),
+                  trControl = control,
+                  tuneGrid = rfGrid,
+                  importance = TRUE) 
+
+# mtry=10, RMSE=0.1012154, R2=0.6745374, MAE=0.07393928
+rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
+print(rf_tune)
+
+# Predict on the test dataset
+rf_pred <- predict(rf_model, newdata = test)
+
+
+```
+
+#BoxCox
+
+
+```{r}
+set.seed(123)
+rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
+
+rf_model <- train(ph ~ ., data = train_imputed, 
+                  method = "rf",
+                  preProc = c("BoxCox"),
+                  trControl = control,
+                  tuneGrid = rfGrid,
+                  importance = TRUE) 
+
+# mtry=10, RMSE=0.1012154, R2=0.6745374, MAE=0.07393928
+rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
+print(rf_tune)
+
+# Predict on the test dataset
+rf_pred <- predict(rf_model, newdata = test_imputed)
+
+
+```
+
+
+
+
+```{r}
+
+set.seed(100)
+library(mice)
+#install.packages("writexl")
+library(writexl)
+
+#head(test_bc)
+
+#test_predict <- predict(cubist_Model , newdata=cleaneval)
+
+#head(test_predict)
+
+eval_data <- cleaneval %>% mutate(across(where(is.numeric), ~replace_na(., median(., na.rm=TRUE))))
+
+ph_prediction <- predict(cubist_Model,eval_data)
+
+eval_data$ph <- ph_prediction
+head(eval_data)
+
+write_xlsx(eval_data, 'StudentEvaluation_final.xlsx')
+
+hist(eval_data$ph)
+  
+
+
 ```
 
