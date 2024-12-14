@@ -1,0 +1,139 @@
+---
+title: "DATA 624 Final"
+author: "Marley Myrianthopoulos"
+date: "2024-12-12"
+output: html_document
+---
+
+# Import Data
+
+```{r}
+# Import required libraries and data
+set.seed(31415)
+library(tidyverse)
+library(openxlsx)
+library(caret)
+library(class)
+train_url <- '/Users/mollysiebecker/DATA 624/project_2/StudentData.csv'
+test_url <- '/Users/mollysiebecker/DATA 624/project_2/StudentEvaluation.csv'
+test_data <- read.csv(test_url)
+train_data <- read.csv(train_url)
+```
+
+# Check for Outliers
+
+```{r}
+invisible(lapply(2:ncol(train_data), function(i) boxplot(train_data[, i], main = colnames(train_data)[i], xlab = colnames(train_data[i]))))
+```
+
+# Check for Non-Normal Data
+
+```{r}
+invisible(lapply(2:ncol(train_data), function(i) hist(train_data[, i], main = colnames(train_data)[i], xlab = colnames(train_data)[i])))
+```
+
+# Clean Data
+
+```{r}
+# Remove predictors with near zero variance
+# Remove observations with no response variable recorded
+train_data_2 <- train_data[,-nearZeroVar(train_data)] |>
+  drop_na(PH)
+```
+
+```{r}
+# Quantify skewness
+library(e1071)
+skewValues <- apply(train_data_2[,-1]%>%drop_na(), 2, skewness)
+sort(skewValues)
+```
+
+```{r}
+# Summarize highly skewed predictors
+summary(train_data_2$Oxygen.Filler)
+summary(train_data_2$Temperature)
+summary(train_data_2$Air.Pressurer)
+summary(train_data_2$PSC.CO2)
+summary(train_data_2$MFR)
+summary(train_data_2$Filler.Speed)
+```
+
+```{r}
+# Apply transformations
+
+# Log transformations
+train_data_2$Filler.Speed <- log(train_data_2$Filler.Speed)
+train_data_2$MFR <- log(train_data_2$MFR)
+
+# Square root transformations
+train_data_2$Temperature <- sqrt(train_data_2$Temperature)
+train_data_2$Air.Pressurer <- sqrt(train_data_2$Air.Pressurer)
+
+# Shifted log transformations
+train_data_2$Oxygen.Filler <- log(train_data_2$Oxygen.Filler + 1)
+train_data_2$PSC.CO2 <- log(train_data_2$PSC.CO2 + 1)
+```
+
+
+```{r}
+# Center and scale data
+numeric_data <- train_data_2[,-1]
+scaled_data <- scale(numeric_data)
+
+# Imputes missing numeric values using knn classifier
+library(impute)
+complete_data <- as.data.frame(impute.knn(scaled_data)$data)
+complete_data$Brand.Code <- train_data_2$Brand.Code
+```
+
+# Determine Optimal Number of Nearest Neighbors for Brand.Code Imputation with KNN
+
+```{r}
+# Tune a kNN model to the observations that include Brand Codes
+has_brand <- complete_data |> drop_na(Brand.Code)
+caret_knn <- train(x = has_brand[,-32],
+                   y = has_brand$Brand.Code,
+                   method = "knn",
+                   tuneLength = 10,
+                   trControl = trainControl(method = "cv"))
+
+# Impute missing Brand Codes using a kNN model with 1 neighbor
+library(VIM)
+complete_data <- kNN(complete_data, k = caret_knn$bestTune$k)[,1:32]
+```
+
+
+
+# Create Random Forest Model
+
+```{r}
+library(import)
+
+library(doParallel)
+library(foreach)
+
+num_cores <- detectCores()
+
+cl <- makeCluster(num_cores - 1)  
+registerDoParallel(cl)
+
+rf_model <- train(PH ~ .,
+                 data = complete_data,
+                 method = "rf",
+                 tuneLength = 10,
+                 metric = "Rsquared",
+                 trControl = trainControl(method = "cv"))
+```
+
+# Print Results
+
+```{r}
+print(rf_model$resample)
+print(mean(rf_model$resample$Rsquared))
+```
+
+# R squared = 0.715
+
+
+
+
