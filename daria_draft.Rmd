@@ -25,6 +25,7 @@ knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, fig.height=5, fig
 
 #libraries
 library(tidyverse)
+library(DMwR)
 library(xgboost)
 library(vip)
 library(summarytools)
@@ -82,6 +83,8 @@ Please submit both Rpubs links and .rmd files or other readable formats for tech
 # 1. Data Exploration
 
 ## 1.1 Load data
+
+Data for training and evaluation are obtained from the GitHub repo via URLs, ensuring that the most recent version is used for analysis. Temporary files are used as intermediate storage to speed up the data collecting process.
 
 ```{r load_data}
 #Load train data
@@ -142,7 +145,6 @@ Apply stratified sampling or weighting to handle imbalance during training. Expl
 Variables such as Carb Volume, PC Volume, and Carb Pressure might be correlated due to their role in carbonation.  
 Multiple pressure-related variables (Carb Pressure1, Fill Pressure, etc.) and filler speed/level metrics could also have collinear relationships.  
 Compute a correlation matrix to detect highly correlated predictors.  
-Principal Component Analysis (PCA) or Variance Inflation Factor (VIF) to handle multicollinearity.
 
 - Data Leakage  
 Variables like PSC, PSC Fill, and PSC CO could be downstream measures dependent on pH. Confirm whether these are part of the production process or outcome metrics.  
@@ -336,6 +338,13 @@ Hyd Pressure4 has an interesting spread, insight into process variability.
 MFR and Oxygen Filler are heavily right-skewed.  
 Log or Box-Cox transformation for variables like MFR and Usage Cont to normalize.  
 
+Mnf Flow: 
+A value of -100 for a large proportion of rows. MAYBE:  
+Missing Data: A common placeholder value.  
+Domain-Specific Encoding: For example, "no flow" or a specific state in manufacturing.  
+Data Error: A mistake in data collection or recording.  
+Confirm if -100 is a legitimate value or a placeholder. If it is a placeholder, it should be treated as missing and imputed or removed.  
+
 ```{r}
 #numeric_vars <- beverage_df %>% 
 #  select(where(is.numeric)) %>% 
@@ -496,14 +505,28 @@ Standardize or Normalize
 Standardize numerical variables for models sensitive to scale (e.g., linear regression, SVR, KNN).  
 Scaling is not required for tree-based models.  
 
-- Dimensionality Reduction  
-Use PCA or feature selection (e.g., Recursive Feature Elimination) to reduce redundancy and multicollinearity.  
+
 
 **Dimension reduction** exclude any near zero-variance predictors?  
 near zero-variance: remove Hyd Pressure1
 
+Standardizing column names (make_clean_names()) helps to eliminate problems caused by case sensitivity or spaces in column names, making data manipulation easier and less error-prone.
 
-Fix colnames
+Identify and remove zero variance predictors (Hyd Pressure 1), which have the same value across all observations and do not help the model differentiate between them. Identifying (nearZeroVar()) and deleting these variables simplifies the modeling process, boosting computing efficiency and potentially increasing model performance by concentrating on more informative features.
+
+The K-Nearest Neighbors imputation method takes advantage of the similarity between observations, filling in missing values using the average (or median) of the 'k' most similar occurrences.Advantages versus MICE: While it can produce comprehensive results via numerous imputations, it is computationally demanding and may bring more variability into the dataset. KNN imputation is simpler and faster than other methods, making it ideal for big datasets with simple relationships.   
+Random Forest Imputation of Categorical Variables: It anticipates missing categories by learning decision rules inferred from other factors in the data, allowing for more accurate approximation of missing values. Unlike simpler methods such as mode imputation, which just fills in the most frequent category without taking into account the context provided by other features, this method captures non-linear correlations between features.
+
+The precise handling of 'Mnf Flow' values, which may be considered as placeholders or outliers, demonstrates a data-specific expertise. If '-100' is not a valid manufacturing data point (for example, representing sensor malfunctions or data input errors), marking it as missing helps to avoid biasing the model. KNN imputation was performed after changing these placeholder values to NA to ensure that the replacement values reflect typical operational data and preserve consistency in the manufacturing flow analysis.  
+
+Decision to not adjust outliers initially: Outliers in predictive modeling for manufacturing data can signify genuine fluctuations in the process or crucial anomalies to record. Automatically reducing or changing them without a comprehensive study may result in the loss of important information about the system's behavior under unusual conditions. Depending on the model's final application, recognizing and responding to uncommon conditions may be more beneficial than having a model that can perfectly anticipate regular conditions.
+
+Categorical variables, such as Brand Code, are turned into numerous binary variables, with each signifying the presence (1) or absence (0) of that category. This is critical for models that demand numerical input but do not naturally handle categorical data (such as SVMs and Neural Networks). This encoding broadens the feature space while making the model more adaptable in learning patterns unique to each category.
+
+Interaction terms (such as pc_volume_pressure, which combines pc_volume and carb_pressure) are used to simulate the effects of interactions between two or more variables on pH levels. This is based on domain knowledge, which implies that the combination of these elements may have a non-additive effect on the outcome. Polynomial characteristics (such carb_volume2) enable the model to incorporate non-linear interactions, resulting in a more flexible border in regression models. Binning continuous variables (such as carb_temp_binned) can aid in the robust management of non-linear effects and improve model performance by transforming a continuous variable into a categorical variable that may be easier to model.
+
+
+
 ```{r}
 #Fix column names
 colnames(beverage_df) <- make_clean_names(colnames(beverage_df))
@@ -527,29 +550,30 @@ beverage_df <- beverage_df[, !zero_var$nzv]
 eval_df <- eval_df[, !zero_var$nzv]
 ```
 
-**Imputing missing values** mice() ?
+**Imputing missing values** knn for numeric vars ?
 
-For Brand Code random forest imputation, for the rest - mice.
+For Brand Code random forest imputation, for the rest - knn.
 
 ```{r}
 set.seed(547)
-#Exclude Brand Code from the imputation
-beverage_mice <- beverage_df %>% select(-brand_code)
-eval_mice <- eval_df %>% select(-brand_code)
 
-#Apply MICE to train df
-imputed_train <- mice(beverage_mice, method='pmm', m=5, seed=547)
+#KNN imputation
+beverage_imputed <- as.data.frame(beverage_df)
+beverage_imputed <- knnImputation(beverage_imputed[, !names(beverage_imputed) %in% c("brand_code", "mnf_flow")])
+beverage_imputed$brand_code <- beverage_df$brand_code
+beverage_imputed$mnf_flow <- beverage_df$mnf_flow
 
-#Extract the completed train df
-completed_train <- complete(imputed_train, 1)
+eval_imputed <- as.data.frame(eval_df)
+eval_imputed <- knnImputation(eval_imputed[, !names(eval_imputed) %in% c("brand_code", "ph")])
+eval_imputed$brand_code <- eval_df$brand_code
+eval_imputed$ph <- eval_df$ph
+#eval_df doesnt have na in mnf_flow
 
-# Apply the same imputation model to evaluation data
-imputed_eval <- mice(eval_mice, method='pmm', m=5, seed=123)
-completed_eval <- complete(imputed_eval, 1)
+#KNN imputation mnf_flow
+beverage_imputed$mnf_flow[beverage_imputed$mnf_flow == -100] <- NA
+beverage_imputed <-  knnImputation(beverage_imputed[, !names(beverage_imputed) %in% c("brand_code")], k = 5, scale = TRUE, meth = 'median')  
+beverage_imputed$brand_code <- beverage_df$brand_code
 
-#Add the imputed columns back
-beverage_imputed <- cbind(completed_train, brand_code = beverage_df$brand_code)
-eval_imputed <- cbind(completed_eval, brand_code = eval_df$brand_code)
 ```
 
 ```{r}
@@ -587,60 +611,71 @@ beverage_imputed <- cbind(beverage_imputed, predict(dummy_vars, newdata = bevera
 beverage_imputed <- beverage_imputed %>% select(-brand_code) 
 eval_imputed <- cbind(eval_imputed, predict(dummy_vars, newdata = eval_imputed))
 eval_imputed <- eval_imputed %>% select(-brand_code) 
-
-
-#Creating Interaction Terms
-beverage_featured <- beverage_imputed %>%
-  mutate(
-    carbonation_compos = (balling + balling_lvl + density + alch_rel + carb_rel) / 5,
-    pressure_temp = carb_pressure * carb_temp,
-    gas_control_indx = (psc + psc_fill + psc_co2) / 3,
-    setpoint_diff = bowl_setpoint - pressure_setpoint,
-    filler_efficiency = filler_speed * mfr,
-    hyd_pressure_indx = (hyd_pressure2 + hyd_pressure3 + hyd_pressure4) / 3
-    
-  ) %>%
-  select(-c(filler_speed, mfr,balling, balling_lvl, density, alch_rel, carb_rel, carb_pressure, carb_temp, psc, psc_fill, psc_co2, bowl_setpoint, pressure_setpoint, hyd_pressure2, hyd_pressure3, hyd_pressure4))
-
-
-
-eval_featured <- eval_imputed %>%
-  mutate(
-    carbonation_compos = (balling + balling_lvl + density + alch_rel + carb_rel) / 5,
-    pressure_temp = carb_pressure * carb_temp,
-    gas_control_indx = (psc + psc_fill + psc_co2) / 3,
-    setpoint_diff = bowl_setpoint - pressure_setpoint,
-    filler_efficiency = filler_speed * mfr,
-    hyd_pressure_indx = (hyd_pressure2 + hyd_pressure3 + hyd_pressure4) / 3
-  ) %>%
-  select(-c(filler_speed, mfr,balling, balling_lvl, density, alch_rel, carb_rel, carb_pressure, carb_temp, psc, psc_fill, psc_co2, bowl_setpoint, pressure_setpoint, hyd_pressure2, hyd_pressure3, hyd_pressure4))
-
-#MAYBE????
-#remove_vars <- c('mnf_flow')
-#name_vars <- names(beverage_featured) %in% remove_vars
-
-# Dropping highly correlated variables.
-#beverage_vars <- beverage_featured[,!name_vars]  
-
-#name_vars <- names(eval_featured) %in% remove_vars
-#eval_vars <- eval_featured[,!name_vars]  
 ```
 
 ```{r}
-#MAYBE????
-#remove_vars <- c('mnf_flow', 'hyd_pressure2', 'hyd_pressure3', 'density', 'alch_rel', 'balling_lvl', 'filler_level')
-#remove_vars <- c('mnf_flow')
-#name_vars <- names(beverage_imputed) %in% remove_vars
+#Creating Interaction Terms
+beverage_revised <- beverage_imputed %>%
+  select(-contains('_interaction'), -contains('composite'), -contains('efficiency'), -contains('index')) %>%
+  mutate(
+    setpoint_diff = bowl_setpoint - pressure_setpoint,  # Example of feature engineering
+    carb_volume2 = carb_volume^2,  # Polynomial feature for carb_volume
+    pc_volume_pressure = pc_volume * carb_pressure  # Interaction feature
+  )
 
-# Dropping highly correlated variables.
-#beverage_vars <- beverage_imputed[,!name_vars]  
+eval_revised <- eval_imputed %>%
+  select(-contains('_interaction'), -contains('composite'), -contains('efficiency'), -contains('index')) %>%
+  mutate(
+    setpoint_diff = bowl_setpoint - pressure_setpoint,  # Example of feature engineering
+    carb_volume2 = carb_volume^2,  # Polynomial feature for carb_volume
+    pc_volume_pressure = pc_volume * carb_pressure  # Interaction feature
+  )
 
-#name_vars <- names(eval_imputed) %in% remove_vars
-#eval_vars <- eval_imputed[,!name_vars] 
+#Remove original columns to reduce collinearity
+beverage_revised <- beverage_revised %>%
+  select(-c(bowl_setpoint, pressure_setpoint, carb_volume, pc_volume, carb_pressure))
+eval_revised <- eval_revised %>%
+  select(-c(bowl_setpoint, pressure_setpoint, carb_volume, pc_volume, carb_pressure))
+
+# Creating a binned feature for another variable, e.g., carb_temp
+beverage_revised$carb_temp_binned <- cut(beverage_revised$carb_temp,
+                                         breaks=quantile(beverage_revised$carb_temp, probs=seq(0, 1, 0.25)),
+                                         include.lowest=TRUE,
+                                         labels=FALSE)
+
+eval_revised$carb_temp_binned <- cut(eval_revised$carb_temp,
+                                         breaks=quantile(eval_revised$carb_temp, probs=seq(0, 1, 0.25)),
+                                         include.lowest=TRUE,
+                                         labels=FALSE)
+
+# Optionally, remove original carb_temp if the binned version is preferred
+beverage_revised <- beverage_revised %>%
+  select(-carb_temp)
+
+eval_revised <- eval_revised %>%
+  select(-carb_temp)
 ```
 
 
+CHECK THAT ALL TRANSFORMATIONS, IMPUTATIONS ARE LEGIT
+
+
 # 3. Build Models
+
+Splitting data into training and testing sets (via createDataPartition()). Its goal is to test the model using previously unseen data in order to predict how well it would perform in real-world circumstances. Using a stratified sampling strategy ensures that the distribution of essential variables (such as pH levels) remains consistent throughout the training and testing sets.
+
+The use of numerous models (Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS) provides a comprehensive view of how various techniques perform with the provided data. 
+ 
+MARS is a flexible non-parametric technique capable of effectively modeling nonlinearities and interactions.  
+Support Vector Machine: Effective for determining the ideal border between outputs; best suited for boundary decisions rather than probability estimations. 
+Neural Networks: Ideal for collecting complicated patterns in huge datasets, but may demand significant computational resources.  
+Gradient Boosting: Effective for managing a variety of data kinds and gradually improves performance through boosting.  
+Random Forest: Effective for handling non-linear relationships and resistant to overfitting.  
+
+
+Cross-validation (specified in trainControl()) ensures that the model is rigorously validated and not tailored to a single subset of the data. Repeated cross-validation helps to reduce variance in the model evaluation process, resulting in a more accurate performance estimate. Using grids (expand.grid()) for distinct model parameters enables systematic searching through a set of alternatives to discover the ideal combination that maximizes model performance.
+
+
 
 ```{r}
 # Detect the number of available cores
@@ -672,24 +707,242 @@ eval_imputed <- subset(eval_imputed, select = -ph)
 #Data with new features
 #set.seed(547)
 set.seed(123)
-trainIndex <- createDataPartition(beverage_featured$ph, p = 0.8, list = FALSE)
-train_featured <- beverage_featured[trainIndex, ]
-test_featured <- beverage_featured[-trainIndex, ]
-
-#Remove PH column from eval_df
-eval_featured <- subset(eval_featured, select = -ph)
+trainIndex <- createDataPartition(beverage_revised$ph, p = 0.8, list = FALSE)
+train_revised <- beverage_revised[trainIndex, ]
+test_revised <- beverage_revised[-trainIndex, ]
+eval_revised <- subset(eval_revised , select = -ph)
 ```
+
+
+**MARS**
 
 ```{r}
-#Data with new features
-#set.seed(547)
-#trainIndex <- createDataPartition(beverage_vars$ph, p = 0.8, list = FALSE)
-#train_vars <- beverage_vars[trainIndex, ]
-#test_vars <- beverage_vars[-trainIndex, ]
+#set.seed(547) 
+set.seed(123)
+#Train MARS
+marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
 
-#Remove PH column from eval_df
-#eval_vars <- subset(eval_vars, select = -ph)
+marsModel <- train(ph ~ ., data = train_revised, 
+                   method = "earth",
+                   preProc = c("center", "scale"),
+                   tuneGrid = marsGrid,
+                   trControl = control
+)
+
+
+#nprune = 20 degree = 2 RMSE=0.1292419 R2=0.4443691 MAE=0.09681492
+mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
+mars_tune
+
+marsPred <- predict(marsModel, newdata = test_revised)
+#RMSE=0.1147351 R2=0.5620902 MAE=0.0887774
+mars_results <- postResample(pred = marsPred, obs = test_revised$ph)
+mars_results
 ```
+
+Variable importance   
+                Overall
+mnf_flow         100.00
+brand_code.C      72.09
+pressure_vacuum   54.57
+alch_rel          54.16
+carb_pressure1    47.91
+air_pressurer     47.91
+balling           47.91
+hyd_pressure3     47.91
+setpoint_diff     47.91
+density           32.94
+temperature       31.70
+
+```{r}
+importance_mars <- varImp(marsModel, scale = FALSE)
+importance_mars
+
+plot(importance_mars, top = 10, main = "top 10 predictors")
+```
+
+**Support Vector Machine**
+
+Preparation:  
+Standardize numerical predictors to avoid dominance by variables with larger scales.  
+Encode categorical variables using one-hot encoding.  
+
+```{r}
+#set.seed(547)
+set.seed(123)
+#Train SVM
+svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
+svmModel <- train(ph ~ ., data = train_revised, 
+                  method = "svmRadial", 
+                  preProc = c("center", "scale"),
+                  tuneGrid = svmGrid,
+                  trControl = control
+                  )
+
+#sigma = 0.1 C = 10 RMSE=0.1208973 R2=0.5119372 MAE=0.08873263
+svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
+svm_tune
+
+svmPred <- predict(svmModel, newdata = test_revised)
+#RMSE=0.11363499 R2=0.56862606 MAE=0.08364735 
+svm_results <- postResample(pred = svmPred, obs = test_revised$ph)
+svm_results
+```
+
+Variable importance
+
+                    Overall
+mnf_flow           0.225134
+usage_cont         0.149749
+setpoint_diff      0.130429
+filler_level       0.098900
+carb_flow          0.085364
+brand_code.C       0.080026
+hyd_pressure_indx  0.076867
+carbonation_compos 0.064414
+pressure_vacuum    0.049858
+fill_pressure      0.042009
+brand_code.D       0.036830
+oxygen_filler      0.030101
+filler_efficiency  0.029419
+temperature        0.023827
+fill_ounces        0.011828
+brand_code.B       0.009413
+gas_control_indx   0.009223
+pc_volume          0.006079
+carb_pressure1     0.005820
+pressure_temp      0.005092
+
+```{r}
+importance_svm <- varImp(svmModel, scale = FALSE)
+importance_svm
+
+plot(importance_svm, top = 10, main = "top 10 predictors")
+```
+
+**Neural networks**
+
+Preparation:  
+Normalize or standardize numerical features.  
+One-hot encode categorical variables.  
+Impute missing values.  
+
+
+```{r}
+#set.seed(547)
+set.seed(123)
+nnetGrid <- expand.grid(.decay = c(0, 0.01, 0.1), .size = 1:10, .bag = FALSE)
+
+nnetModel <- train(ph ~ ., data = train_revised, 
+                   method = "avNNet",
+                   preProc = c("center", "scale"),
+                   tuneGrid = nnetGrid,
+                   trControl = control,
+                   linout = TRUE,
+                   trace = FALSE)  
+
+#size = 10, decay = 0 and bag = FALSE RMSE=0.1160184 R2=0.5487825 MAE=0.08579205
+nnet_tune <- nnetModel$results[nnetModel$results$size == nnetModel$bestTune$size & nnetModel$results$decay == nnetModel$bestTune$decay, ]
+nnet_tune
+
+nnetPred <- predict(nnetModel, newdata = test_revised)
+#RMSE=0.10565308 R2=0.62682414 MAE=0.08080004
+nnet_results <- postResample(pred = nnetPred, obs = test_revised$ph)
+nnet_results
+```
+
+Variable importance
+
+                 Overall
+mnf_flow        0.225134
+usage_cont      0.149749
+setpoint_diff   0.130429
+filler_level    0.098900
+carb_flow       0.085364
+brand_code.C    0.080026
+hyd_pressure3   0.054878
+pressure_vacuum 0.049858
+fill_pressure   0.042009
+hyd_pressure2   0.037238
+brand_code.D    0.036830
+oxygen_filler   0.030101
+carb_rel        0.025823
+hyd_pressure4   0.025636
+temperature     0.023827
+alch_rel        0.023403
+fill_ounces     0.011828
+balling_lvl     0.011025
+psc             0.009459
+brand_code.B    0.009413
+
+```{r}
+importance_nnet <- varImp(nnetModel, scale = FALSE)
+importance_nnet
+
+plot(importance_nnet, top = 10, main = "top 10 predictors")
+```
+
+
+**Gradient Boosting**
+
+Preparation:  
+Ensure categorical variables are encoded appropriately (e.g., label encoding).  
+Scaling is typically not required, but imputing missing values improves performance.  
+can handle multicollinearity 
+
+```{r}
+#set.seed(547)
+set.seed(123)
+gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
+gbm_model <- train(ph ~ ., data = train_revised, 
+                   method = "gbm", 
+                   preProc = c("center", "scale"),
+                   tuneGrid = gbmGrid, 
+                   trControl = control,
+                   verbose = FALSE)
+
+#shrinkage=0.01, interaction.depth=7, n.minobsinnode=5, n.trees=1000, RMSE=0.1118648, R2= 0.5853444, MAE=0.0841027
+gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
+gbm_tune
+
+gbm_predictions <- predict(gbm_model, newdata = test_revised)
+
+#RMSE=0.10193487, Rsquared=0.66519696, MAE= 0.07896032 
+gbm_results <- postResample(pred = gbm_predictions, obs = test_revised$ph)
+gbm_results
+```
+
+Variable importance
+
+                   Overall
+mnf_flow            311.72
+brand_code.C        107.68
+usage_cont          105.98
+alch_rel             88.43
+oxygen_filler        88.27
+temperature          84.01
+pressure_vacuum      59.90
+carb_pressure1       55.74
+setpoint_diff        54.87
+carb_rel             53.65
+filler_speed         49.99
+air_pressurer        49.90
+balling_lvl          45.86
+density              44.74
+balling              42.35
+carb_flow            40.92
+hyd_pressure3        31.74
+mfr                  30.75
+carb_volume2         30.54
+pc_volume_pressure   26.95
+
+```{r}
+importance_gbm <- varImp(gbm_model, scale = FALSE)
+importance_gbm
+
+plot(importance_gbm, top = 10, main = "Top 10 predictors, GBM")
+```
+
 
 
 **Random Forest**
@@ -705,348 +958,54 @@ can handle multicollinearity
 #set.seed(547)
 set.seed(123)
 rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
-rf_model <- train(ph ~ ., data = train_imputed, 
+
+rf_model <- train(ph ~ ., data = train_revised, 
                   method = "rf",
                   preProc = c("center", "scale"),
                   trControl = control,
                   tuneGrid = rfGrid,
                   importance = TRUE) 
 
-#mtry=10, RMSE=0.1012154, R2=0.6745374, MAE=0.07393928
+#mtry=10, RMSE=0.1017966, R2=0.6687174, MAE=0.07314769
 rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
 rf_tune
 
-rf_pred <- predict(rf_model, newdata = test_imputed)
+rf_pred <- predict(rf_model, newdata = test_revised)
 
-#RMSE=0.10027544, R2=0.69053772 MAE= 0.07212886
-rf_results <- postResample(pred = rf_pred, obs = test_imputed$ph)
+#RMSE=0.09365386, R2=0.72964680 MAE=0.06941912 
+rf_results <- postResample(pred = rf_pred, obs = test_revised$ph)
 rf_results
 ```
 
 Variable importance
 
                 Overall
-mnf_flow          40.10
-pressure_vacuum   36.07
-oxygen_filler     35.14
-brand_code.C      32.60
-usage_cont        27.39
-carb_rel          26.99
-balling_lvl       26.54
-air_pressurer     25.79
-temperature       25.17
-filler_speed      24.66
-alch_rel          23.17
-balling           22.57
-carb_pressure1    21.40
-carb_flow         21.13
-bowl_setpoint     20.24
-density           20.23
-filler_level      17.84
-hyd_pressure3     17.00
-mfr               16.89
-carb_volume       16.47
+mnf_flow          40.11
+oxygen_filler     35.03
+pressure_vacuum   32.57
+temperature       32.55
+brand_code.C      29.58
+carb_rel          28.68
+air_pressurer     28.08
+usage_cont        26.32
+alch_rel          24.51
+filler_speed      24.22
+setpoint_diff     24.15
+balling_lvl       24.07
+carb_flow         23.88
+balling           22.36
+density           19.31
+hyd_pressure3     19.17
+carb_volume2      18.53
+filler_level      17.81
+carb_pressure1    17.63
+mfr               16.43
 
 ```{r}
 importance_rf <- varImp(rf_model, scale = FALSE)
 importance_rf
 
-plot(importance_rf, top = 10, main = "top 10 predictors")
-```
-
-**Gradient Boosting**
-
-Preparation:  
-Ensure categorical variables are encoded appropriately (e.g., label encoding).  
-Scaling is typically not required, but imputing missing values improves performance.  
-can handle multicollinearity 
-
-```{r}
-#set.seed(547)
-set.seed(123)
-gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
-gbm_model <- train(ph ~ ., data = train_imputed, 
-                   method = "gbm", 
-                   preProc = c("center", "scale"),
-                   tuneGrid = gbmGrid, 
-                   trControl = control,
-                   verbose = FALSE)
-
-#shrinkage=0.01, interaction.depth=7, n.minobsinnode=10, n.trees=1000, RMSE=0.1116662, R2=0.5845802, MAE=0.08419827
-gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
-gbm_tune
-
-gbm_predictions <- predict(gbm_model, newdata = test_imputed)
-
-#RMSE=0.10565038, Rsquared=0.64276042, MAE= 0.07950506 
-gbm_results <- postResample(pred = gbm_predictions, obs = test_imputed$ph)
-gbm_results
-```
-
-Variable importance
-
-mnf_flow         339.79
-brand_code.C     120.07
-usage_cont       108.89
-oxygen_filler     87.21
-alch_rel          80.17
-temperature       73.41
-pressure_vacuum   62.30
-carb_pressure1    61.38
-air_pressurer     58.16
-bowl_setpoint     54.12
-carb_rel          49.12
-balling_lvl       46.28
-balling           44.71
-density           42.37
-filler_speed      42.36
-carb_flow         31.62
-hyd_pressure3     25.90
-pc_volume         24.38
-fill_ounces       23.41
-mfr               22.58
-
-```{r}
-importance_gbm <- varImp(gbm_model, scale = FALSE)
-importance_gbm
-
-plot(importance_gbm, top = 10, main = "top 10 predictors")
-```
-
-
-
-**Neural networks**
-
-Preparation:  
-Normalize or standardize numerical features.  
-One-hot encode categorical variables.  
-Impute missing values.  
-
-
-```{r}
-#set.seed(547)
-set.seed(123)
-nnetGrid <- expand.grid(.decay = c(0, 0.01, 0.1), .size = 1:10, .bag = FALSE)
-
-nnetModel <- train(ph ~ ., data = train_imputed, 
-                   method = "avNNet",
-                   preProc = c("center", "scale"),
-                   tuneGrid = nnetGrid,
-                   trControl = control,
-                   linout = TRUE,
-                   trace = FALSE)  
-
-#size = 10, decay = 0 and bag = FALSE RMSE=0.1149139 R2=0.5559424 MAE=0.08557545
-nnet_tune <- nnetModel$results[nnetModel$results$size == nnetModel$bestTune$size & nnetModel$results$decay == nnetModel$bestTune$decay, ]
-nnet_tune
-
-nnetPred <- predict(nnetModel, newdata = test_imputed)
-#RMSE=0.11178875 R2=0.58921628 MAE=0.08249794 
-nnet_results <- postResample(pred = nnetPred, obs = test_imputed$ph)
-nnet_results
-
-```
-
-Variable importance
-
-mnf_flow          0.22265
-usage_cont        0.16234
-bowl_setpoint     0.12216
-filler_level      0.10591
-pressure_setpoint 0.09704
-carb_flow         0.08701
-brand_code.C      0.08457
-hyd_pressure3     0.05234
-pressure_vacuum   0.05022
-fill_pressure     0.04405
-brand_code.D      0.03947
-hyd_pressure2     0.03431
-carb_rel          0.02556
-oxygen_filler     0.02463
-alch_rel          0.02198
-temperature       0.02180
-hyd_pressure4     0.02162
-fill_ounces       0.01149
-brand_code.B      0.01130
-pc_volume         0.01039
-
-```{r}
-importance_nnet <- varImp(nnetModel, scale = FALSE)
-importance_nnet
-
-plot(importance_nnet, top = 10, main = "top 10 predictors")
-```
-
-
-**Support Vector Machine**
-
-Preparation:  
-Standardize numerical predictors to avoid dominance by variables with larger scales.  
-Encode categorical variables using one-hot encoding.  
-
-```{r}
-#set.seed(547)
-set.seed(123)
-#Train SVM
-svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
-svmModel <- train(ph ~ ., data = train_featured, 
-                  method = "svmRadial", 
-                  preProc = c("center", "scale"),
-                  tuneGrid = svmGrid,
-                  trControl = control
-                  )
-
-#sigma = 0.1 C = 1 RMSE=0.1183132 R2=0.530464 MAE=0.08760546
-svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
-svm_tune
-
-svmPred <- predict(svmModel, newdata = test_featured)
-#RMSE=0.11812221 R2=0.54019858 MAE=0.08580952
-svm_results <- postResample(pred = svmPred, obs = test_featured$ph)
-svm_results
-```
-
-Variable importance
-
-                   Overall
-mnf_flow           0.22265
-usage_cont         0.16234
-setpoint_diff      0.13572
-filler_level       0.10591
-carb_flow          0.08701
-brand_code.C       0.08457
-carbonation_compos 0.06407
-hyd_pressure3      0.05234
-pressure_vacuum    0.05022
-fill_pressure      0.04405
-brand_code.D       0.03947
-hyd_pressure2      0.03431
-oxygen_filler      0.02463
-temperature        0.02180
-hyd_pressure4      0.02162
-filler_efficiency  0.01658
-gas_control_indx   0.01249
-fill_ounces        0.01149
-brand_code.B       0.01130
-pc_volume          0.01039
-
-```{r}
-importance_svm <- varImp(svmModel, scale = FALSE)
-importance_svm
-
-plot(importance_svm, top = 10, main = "top 10 predictors")
-```
-
-**MARS**
-
-```{r}
-#set.seed(547) 
-set.seed(123)
-#Train MARS
-marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
-
-marsModel <- train(ph ~ ., data = train_featured, 
-                   method = "earth",
-                   preProc = c("center", "scale"),
-                   tuneGrid = marsGrid,
-                   trControl = control
-)
-
-
-#nprune = 20 degree = 2 RMSE=0.1263193 R2=0.4646403 MAE=0.09517493
-mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
-mars_tune
-
-marsPred <- predict(marsModel, newdata = test_featured)
-#RMSE=0.12625382 R2=0.47430313 MAE=0.09277686
-mars_results <- postResample(pred = marsPred, obs = test_featured$ph)
-mars_results
-```
-
-
-```{r}
-#No new features
-#set.seed(547) 
-set.seed(123)
-#Train MARS
-marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
-
-marsModel <- train(ph ~ ., data = train_imputed, 
-                   method = "earth",
-                   preProc = c("center", "scale"),
-                   tuneGrid = marsGrid,
-                   trControl = control
-)
-
-
-#nprune = 20 degree = 2 RMSE=0.1268247 R2=0.4605546 MAE=0.0968188
-mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
-mars_tune
-
-marsPred <- predict(marsModel, newdata = test_imputed)
-#RMSE=0.1236011 R2=0.4962139 MAE=0.0914482 
-mars_results <- postResample(pred = marsPred, obs = test_imputed$ph)
-mars_results
-```
-
-Variable importance   
-mnf_flow         100.00
-brand_code.C      75.72
-hyd_pressure3     64.47
-carb_pressure1    64.47
-usage_cont        61.94
-bowl_setpoint     58.09
-pressure_vacuum   53.62
-alch_rel          46.91
-balling           43.22
-temperature       38.22
-air_pressurer     29.59
-filler_speed      25.93
-density           21.78
-oxygen_filler     18.33
-
-```{r}
-p1 <- vip(marsModel, num_features = 40, geom = "point", value = "gcv") + ggtitle("GCV")
-p2 <- vip(marsModel, num_features = 40, geom = "point", value = "rss") + ggtitle("RSS")
-
-importance_mars <- varImp(marsModel, scale = FALSE)
-importance_mars
-
-gridExtra::grid.arrange(p1, p2, ncol = 2)
-```
-
-
-```{r}
-set.seed(547) 
-xgbGrid <- expand.grid(
-  nrounds = seq(100, 700, by = 100),     # Broader range for boosting iterations
-  eta = c(0.01, 0.1),             # Slightly broader learning rates
-  max_depth = c(3, 5, 7),               # Broader range for tree depth
-  gamma = c(0, 0.5, 1),                 # Broader gamma values for regularization
-  colsample_bytree = c(0.7, 0.8, 1),    # Expanded values for column sampling
-  min_child_weight = c(1, 3, 5),        # Broader range for child weight
-  subsample = c(0.7, 0.8, 0.9)          # Broader range for subsampling
-)
-
-# Train the XGBoost model
-xgb_model <- train(ph ~ ., data = train_imputed, 
-  method = "xgbTree",
-  preProc = c("center", "scale"), 
-  tuneGrid = xgbGrid,
-  trControl = control
-)
-
-#RMSE=0.1023946   Rsquared  =0.6527386      MAE =0.07495757
-xgboost_tune <- xgb_model$results[xgb_model$results$max_depth == xgb_model$bestTune$max_depth & xgb_model$results$gamma == xgb_model$bestTune$gamma & xgb_model$results$nrounds == xgb_model$bestTune$nrounds & xgb_model$results$min_child_weight == xgb_model$bestTune$min_child_weight & xgb_model$results$eta == xgb_model$bestTune$eta, ]
-xgboost_tune
-
-# Predictions
-xgb_predictions <- predict(xgb_model, newdata = test_imputed)
-
-# RMSE=0.10554969   Rsquared  =0.60479526      MAE =0.07647919
-  
-xgb_results <- postResample(pred = xgb_predictions, obs = test_imputed$ph)
-xgb_results
+plot(importance_rf, top = 10, main = "Top 10 predictors, Random Forest")
 ```
 
 ```{r}
@@ -1055,6 +1014,11 @@ stopCluster(cl)
 
 
 # 4. Model Selection
+
+Resampling metrics (RMSE, R², and MAE) from model training are compared to test metrics to evaluate overfitting and generalization capabilities.Models are judged on their predicted accuracy, robustness, and computational efficiency. The final decision (e.g., Random Forest with the best test metrics) is based on a combination of these criteria, with the goal of producing a model that performs well in a variety of circumstances.
+
+The chosen model should meet operational needs such as ease of deployment, stakeholder interpretability, and long-term maintenance. Model performance should be checked over time using new data to verify that it continues to operate as expected under changing settings.
+
 
 ```{r}
 #Create empty df
@@ -1070,12 +1034,11 @@ results <- data.frame(
 )
 
 #Fill df with results
-results <- rbind(results, data.frame(Model = "RF", Resample_RMSE = rf_tune$RMSE, Resample_R2 = rf_tune$Rsquared, Resample_MAE = rf_tune$MAE, Test_RMSE = rf_results[1], Test_R2 = rf_results[2], Test_MAE = rf_results[3]))
-results <- rbind(results, data.frame(Model = "GBM", Resample_RMSE = gbm_tune$RMSE, Resample_R2 = gbm_tune$Rsquared, Resample_MAE = gbm_tune$MAE, Test_RMSE = gbm_results[1], Test_R2 = gbm_results[2], Test_MAE = gbm_results[3]))
-results <- rbind(results, data.frame(Model = "NNet", Resample_RMSE = nnet_tune$RMSE, Resample_R2 = nnet_tune$Rsquared, Resample_MAE = nnet_tune$MAE, Test_RMSE = nnet_results[1], Test_R2 = nnet_results[2], Test_MAE = nnet_results[3]))
-results <- rbind(results, data.frame(Model = "SVM", Resample_RMSE = svm_tune$RMSE, Resample_R2 = svm_tune$Rsquared, Resample_MAE = svm_tune$MAE, Test_RMSE = svm_results[1], Test_R2 = svm_results[2], Test_MAE = svm_results[3]))
 results <- rbind(results, data.frame(Model = "MARS", Resample_RMSE = mars_tune$RMSE, Resample_R2 = mars_tune$Rsquared, Resample_MAE = mars_tune$MAE, Test_RMSE = mars_results[1], Test_R2 = mars_results[2], Test_MAE = mars_results[3]))
-results <- rbind(results, data.frame(Model = "XGBoost", Resample_RMSE = xgboost_tune$RMSE, Resample_R2 = xgboost_tune$Rsquared, Resample_MAE = xgboost_tune$MAE, Test_RMSE = xgboost_results[1], Test_R2 = xgboost_results[2], Test_MAE = xgboost_results[3]))
+results <- rbind(results, data.frame(Model = "SVM", Resample_RMSE = svm_tune$RMSE, Resample_R2 = svm_tune$Rsquared, Resample_MAE = svm_tune$MAE, Test_RMSE = svm_results[1], Test_R2 = svm_results[2], Test_MAE = svm_results[3]))
+results <- rbind(results, data.frame(Model = "NNet", Resample_RMSE = nnet_tune$RMSE, Resample_R2 = nnet_tune$Rsquared, Resample_MAE = nnet_tune$MAE, Test_RMSE = nnet_results[1], Test_R2 = nnet_results[2], Test_MAE = nnet_results[3]))
+results <- rbind(results, data.frame(Model = "GBM", Resample_RMSE = gbm_tune$RMSE, Resample_R2 = gbm_tune$Rsquared, Resample_MAE = gbm_tune$MAE, Test_RMSE = gbm_results[1], Test_R2 = gbm_results[2], Test_MAE = gbm_results[3]))
+results <- rbind(results, data.frame(Model = "RF", Resample_RMSE = rf_tune$RMSE, Resample_R2 = rf_tune$Rsquared, Resample_MAE = rf_tune$MAE, Test_RMSE = rf_results[1], Test_R2 = rf_results[2], Test_MAE = rf_results[3]))
 row.names(results) <- NULL
 
 results
@@ -1086,26 +1049,22 @@ Save results to excel file
 
 ```{r}
 #Predictions for the evaluation dataset
-eval_pred <- predict(best_model, newdata = eval_imputed)
+eval_pred <- predict(rf_model, newdata = eval_revised)
 
 #Create df
 eval_results <- data.frame(
   ph_pred = eval_pred
 )
 
-eval_imputed_pred <- eval_imputed
-eval_imputed_pred$ph_pred <- eval_pred
+eval_revised_pred <- eval_revised
+eval_revised_pred$ph_pred <- eval_pred
 
 #Save to Excel
-write_xlsx(eval_imputed_pred, "eval_imputed_pred.xlsx")
+write_xlsx(eval_revised_pred, "eval_revised_pred.xlsx")
 write_xlsx(eval_results, "ph_predictions.xlsx")
 ```
 
 
-```{r}
-write.csv(beverage_imputed,"beverage_imputed.csv", row.names = F)
-write.csv(beverage_featured,"beverage_featured.csv", row.names = F)
-```
 # 5. Conclusion
 
 
@@ -1113,19 +1072,10 @@ write.csv(beverage_featured,"beverage_featured.csv", row.names = F)
 
 # Appendix: R Code
 
-Analyze NAs for PH, they are all in brand B.
-
-Analyze NAs for Brand code.
-
-Do anything with brand B being represented the most?
 
 Anything to do with the outliers?
 
 There are binomial distributions, anything to do with them?
-
-Do I need to use zeroVar to remove variables? VIF? PCA?
-
-MFR remove?
 
 MNF flow bs PH, values of -100, change that? Or just remove? The total number of observations sum to 1183, which represents a 46% of observations from the 2571.  
 
@@ -1133,122 +1083,27 @@ Not include Hyd Pressure 2, Hyd Pressure 3? There are two very near consecutive 
 
 
 
-Analyze NAs for PH, they are all in brand B. What to do? Analyze NAs for Brand code. Do anything with brand B being represented the most? Anything to do with the outliers for PH or any other variables?  There are binomial distributions for some variable, check for what variables, anything to do with them?
+Residual Plot Analysis for Random Forest: Pattern and Spread. The residuals exhibit no clear pattern of growing or decreasing trends with the fitted values, which is a good indicator. They appear to be randomly distributed around the zero line, indicating that the model does not exhibit heteroscedasticity.
+Outliers: Some residuals differ greatly from the rest. These could be outliers in your data or cases when the model fails to predict correctly.
+
+Conclusion: The Random Forest model appears to be working well in terms of handling data volatility with no discernible bias. However, you might want to look into the few outliers to determine if they are caused by data errors or specific occurrences that are difficult to model.
+
+Cross-validation RMSE plot.
+RMSE Reduction: The plot demonstrates that RMSE decreases dramatically as the number of predictors in the model increases from one to about ten, after which it plateaus. This means that a subset of the top ten features account for the majority of the predictive power.
+Stabilization: The fact that RMSE stabilizes after a certain point indicates that adding more predictors beyond this point does not significantly increase model performance, which is typical of diminishing returns in feature addition.
+
+
+Conclusion: According to this research, focusing on the top predictors (the number at which the RMSE levels out) may be the most efficient use of data. It promotes a parsimonious model construction method in which adding greater complexity (i.e., more features) does not result in improved performance.
 
 
 ```{r}
+# Residual plot for Random Forest
+rf_residuals <- residuals(rf_model)
+plot(rf_residuals, main = "Residual Plot for Random Forest", ylab = "Residuals", xlab = "Fitted values")
+
+# Cross-Validation Check
 set.seed(123)
-
-df_1 <- beverage_imputed %>%
-  mutate(
-    # Interaction among positively correlated features
-    bowl_filler = bowl_setpoint * filler_level,
-    bowl_pressure = bowl_setpoint * pressure_vacuum,
-    filler_pressure = filler_level * pressure_vacuum,
-    
-    # Interaction between positive and negative correlations
-    bowl_mnf_flow = bowl_setpoint * mnf_flow,
-    filler_usage = filler_level * usage_cont,
-    pressure_usage = pressure_vacuum * usage_cont,
-    
-    # Interaction among negatively correlated features
-    mnf_usage = mnf_flow * usage_cont,
-    mnf_pressure = mnf_flow * pressure_setpoint,
-    
-    # Ratios for potential nonlinear relationships
-    pressure_temp_ratio = pressure_vacuum / temperature,
-    filler_mnf_ratio = filler_level / mnf_flow
-  )
-
-correlations <- cor(df_1 %>% select(starts_with("bowl_"), starts_with("filler_"), ph), use = "complete.obs")
-print(correlations["ph", ])
-
-glm_model <- glm(
-  ph ~ bowl_filler + bowl_pressure + filler_pressure +
-       bowl_mnf_flow + filler_usage + pressure_usage +
-       mnf_usage + mnf_pressure + pressure_temp_ratio + filler_mnf_ratio,
-  data = df_1
-)
-summary(glm_model)
-
-# Prepare data
-interaction_data <- df_1 %>% select(ph, starts_with("bowl_"), starts_with("filler_"))
-rf_model <- train(
-  ph ~ ., data = interaction_data,
-  method = "rf",
-  importance = TRUE
-)
-
-# Variable importance
-importance <- varImp(rf_model)
-print(importance)
+cv_results <- train(ph ~ ., data = train_new, method = "rf",
+                    trControl = trainControl(method = "cv", number = 10, savePredictions = "final"))
+plot(cv_results)
 ```
-
-```{r}
-df_1 <- df_1 %>%
-  select(-bowl_setpoint, -filler_level, -bowl_filler, -bowl_pressure, -bowl_mnf_flow, -mnf_usage)
-```
-
-
-
-```{r}
-set.seed(123)
-train_df_idx <- createDataPartition(df_1$ph, p = 0.8, list = FALSE)
-train_df <- df_1[train_df_idx, ]
-test_df <- df_1[-train_df_idx, ]
-```
-
-
-
-```{r}
-#set.seed(547)
-set.seed(123)
-rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
-rf_model <- train(ph ~ ., data = train_df, 
-                  method = "rf",
-                  preProc = c("center", "scale"),
-                  trControl = control,
-                  tuneGrid = rfGrid,
-                  importance = TRUE) 
-
-#mtry=10, RMSE=0.1006935, R2=0.6761629, MAE=0.07335081
-rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
-rf_tune
-
-rf_pred <- predict(rf_model, newdata = test_df)
-
-#RMSE=0.10009144, R2=0.68986540 MAE= 0.07124392 
-rf_results <- postResample(pred = rf_pred, obs = test_df$ph)
-rf_results
-
-```
-
-
-```{r}
-#set.seed(547)
-set.seed(123)
-gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
-gbm_model <- train(ph ~ ., data = train_df, 
-                   method = "gbm", 
-                   preProc = c("center", "scale"),
-                   tuneGrid = gbmGrid, 
-                   trControl = control,
-                   verbose = FALSE)
-
-#shrinkage=0.01, interaction.depth=7, n.minobsinnode=10, n.trees=1000, RMSE=0.1111007, R2= 0.5883022, MAE=0.08336697
-gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
-gbm_tune
-
-gbm_predictions <- predict(gbm_model, newdata = test_df)
-
-#RMSE=0.10517869, Rsquared=0.64448922, MAE= 0.07763472  
-gbm_results <- postResample(pred = gbm_predictions, obs = test_df$ph)
-gbm_results
-```
-
-```{r}
-plot(resid(rf_model), train_df$ph, xlab = "Residuals", ylab = "PH", main = "Residuals vs PH")
-
-car::vif(glm(ph ~ ., data = train_df))
-```
-
