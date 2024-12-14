@@ -121,6 +121,7 @@ rf_model <- train(PH ~ .,
                  data = complete_data,
                  method = "rf",
                  tuneLength = 10,
+                 metric = "Rsquared",
                  trControl = trainControl(method = "cv"))
 ```
 
@@ -131,7 +132,7 @@ print(rf_model$resample)
 print(mean(rf_model$resample$Rsquared))
 ```
 
-
+# R squared = 0.715
 
 
 
