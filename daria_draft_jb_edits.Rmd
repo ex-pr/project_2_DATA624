@@ -73,9 +73,9 @@ library(writexl)
 
 #Overview
 
-Objective: The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process. Following the discovery of missingness, the group moved to further evaluate the data in a thorough exploratory data analysis.
+Objective: The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
 
-We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. 
+We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. Following the discovery of missingness,the group moved to further evaluate the data through thorough exploratory data analysis.
 
 Key Findings: Summarize the main outcomes, such as the most important factors affecting pH and the performance of the predictive model.  
 
