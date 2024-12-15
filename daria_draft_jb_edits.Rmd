@@ -680,12 +680,13 @@ eval_transformed$psc_co2 <- log(eval_transformed$psc_co2 + 1)
 The team created six new transformation for six original variables in the dataset to try an improve performance. The changes were seen across both the original dataset and the eval dataset.
 
 **Transformed Variables and the transformations applied:**
-* filler_speed - (log)
-* mfr - (log)
-* temperature (sqrt)
-* air_pressure (sqrt)
-* oxygen_filter (shifted log)
-* psc_co2 (shifted log)
+
+- filler_speed - (log)
+- mfr - (log)
+- temperature (sqrt)
+- air_pressure (sqrt)
+- oxygen_filter (shifted log)
+- psc_co2 (shifted log)
 
 Tables 7 and 8 were created to visualize this change in both new transformed df's.
 
@@ -729,17 +730,27 @@ DT::datatable(
 
 # 3. Build Models
 
-Splitting data into training and testing sets (via createDataPartition()). Its goal is to test the model using previously unseen data in order to predict how well it would perform in real-world circumstances. Using a stratified sampling strategy ensures that the distribution of essential variables (such as pH levels) remains consistent throughout the training and testing sets.
+### Model Building and Evaluation
 
-The use of numerous models (Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS) provides a comprehensive view of how various techniques perform with the provided data. 
- 
-MARS is a flexible non-parametric technique capable of effectively modeling nonlinearities and interactions.  
-Support Vector Machine: Effective for determining the ideal border between outputs; best suited for boundary decisions rather than probability estimations. 
-Neural Networks: Ideal for collecting complicated patterns in huge datasets, but may demand significant computational resources.  
-Gradient Boosting: Effective for managing a variety of data kinds and gradually improves performance through boosting.  
-Random Forest: Effective for handling non-linear relationships and resistant to overfitting.  
+- **Data Splitting:**
+  - Splitting data into training and testing sets using `createDataPartition()`. This approach tests the model with previously unseen data to predict real-world performance.
+  - Using a stratified sampling strategy ensures that the distribution of essential variables (such as pH levels) remains consistent across training and testing sets.
 
-Cross-validation (specified in trainControl()) ensures that the model is rigorously validated and not tailored to a single subset of the data. Repeated cross-validation helps to reduce variance in the model evaluation process, resulting in a more accurate performance estimate. Using grids (expand.grid()) for distinct model parameters enables systematic searching through a set of alternatives to discover the ideal combination that maximizes model performance.
+- **Model Selection:**
+  - **Random Forest:** Effective for handling non-linear relationships and resistant to overfitting.
+  - **Gradient Boosting:** Manages a variety of data types and gradually improves performance through boosting.
+  - **Neural Networks:** Ideal for capturing complex patterns in large datasets but may require significant computational resources.
+  - **Support Vector Machine (SVM):** Effective for determining the ideal boundary between outputs; best suited for boundary decisions rather than probability estimations.
+  - **MARS (Multivariate Adaptive Regression Splines):** A flexible non-parametric technique capable of effectively modeling nonlinearities and interactions.
+
+- **Cross-Validation:**
+  - Specified in `trainControl()`, cross-validation ensures rigorous validation and prevents the model from being tailored to a single subset of the data.
+  - Repeated cross-validation helps reduce variance in the model evaluation process, resulting in a more accurate performance estimate.
+
+- **Hyperparameter Tuning:**
+  - Using grids (`expand.grid()`) for distinct model parameters enables systematic searching through a set of alternatives to discover the ideal combination that maximizes model performance.
+
+
 
 ```{r parallel_core}
 #Detect the number of available cores
@@ -771,11 +782,11 @@ control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, allowPa
 
 **MARS**
 
-MARS is a versatile modeling method that successfully captures nonlinearities and variable interactions. Preparation entails scaling and centring the data to standardize feature scales to focus on discovering significant interactions and trends without being influenced by different variable scales.  
-Trained using earth method with a parameter grid specifying degrees and number of pruning terms (nprune). Centering and scaling were applied to normalize the variables. 
-MARS builds models by generating piecewise linear splines, which are especially useful for dealing with complex, non-linear interactions that may be present in data from various manufacturing processes. To avoid overfitting, the model starts with the maximum number of basis functions and prunes them using the generalized cross-validation criterion. 
+MARS is a versatile modeling method that captures nonlinearities and variable interactions effectively. Data preparation involves scaling and centering to standardize feature scales. The model is trained using the earth method with a parameter grid specifying degrees and the number of pruning terms (nprune).
 
-The best model, with a degree of 2 and 20 pruning terms, showed an RMSE of 0.1269, R-squared of 0.459, and MAE of 0.0960 on the training set, indicating moderate predictive accuracy. mnf_flow was the most influential, followed by variables like brand_code.C, and hyd_pressure3, suggesting these factors are critical in predicting pH levels.
+MARS builds models by generating piecewise linear splines, useful for handling complex, non-linear interactions. To avoid overfitting, it starts with the maximum number of basis functions and prunes them using the generalized cross-validation criterion.
+
+The best model, with a degree of 2 and 20 pruning terms, showed an RMSE of 0.1269, R-squared of 0.459, and MAE of 0.0960 on the training set. The most influential variable was mnf_flow, followed by brand_code.C and hyd_pressure3, indicating these factors are critical in predicting pH levels.
 
 ```{r mars_model}
 set.seed(123)
@@ -1097,20 +1108,40 @@ stopCluster(cl)
 
 # 4. Model Selection
 
-Resampling metrics (RMSE, R², and MAE) from model training are compared to test metrics to evaluate overfitting and generalization capabilities.Models are judged on their predicted accuracy, robustness, and computational efficiency. The final decision (e.g., Random Forest with the best test metrics) is based on a combination of these criteria, with the goal of producing a model that performs well in a variety of circumstances.
 
-The chosen model should meet operational needs such as ease of deployment, stakeholder interpretability, and long-term maintenance. Model performance should be checked over time using new data to verify that it continues to operate as expected under changing settings.
+Resampling metrics (RMSE, R², and MAE) from model training are compared to test metrics to evaluate overfitting and generalization capabilities. Models are judged on predicted accuracy, robustness, and computational efficiency. The final decision is based on these criteria to produce a model that performs well under various circumstances.
 
-Based on the resampling (cross-validation) metrics and test metrics for each model, we can perform a detailed analysis to select the best model for predicting pH values.
+**Detailed Bullet Points Describing Each Model:**
 
-Random Forest (RF) outperforms practically all metrics, especially in test metrics, where it has the lowest RMSE (0.0963) and the greatest R-squared (0.7130). The MAE is likewise the lowest among the models, at 0.0699, showing that RF predictions are relatively close to real values with less error on average.  
-Gradient Boosting Machine (GBM) follows closely behind RF, with competitive scores, particularly in test R-squared (0.6445), indicating its resilience in dealing with the dataset's variation.  
-Neural Network (NNet) and Support Vector Machine (SVM) both perform well, with NNet marginally outperforming in terms of resampling and testing metrics, giving it a viable alternative if ensemble approaches are eschewed.
+- **Random Forest (RF):**
+  - **Performance:** Outperforms in almost all metrics with the lowest RMSE (0.0963) and highest R-squared (0.7130). The MAE is also the lowest at 0.0699, indicating predictions are close to actual values with minimal error.
+  - **Strengths:** High accuracy, robustness, and ability to handle non-linear relationships.
+  - **Considerations:** Requires more training time and resources; careful tuning needed to avoid overfitting.
 
-While Multivariate Adaptive Regression Splines (MARS) are beneficial for capturing nonlinear interactions, their performance metrics fall behind those of the other models.
+- **Gradient Boosting Machine (GBM):**
+  - **Performance:** Competitive scores, particularly in test R-squared (0.6445), showing resilience in handling dataset variations.
+  - **Strengths:** Effective for managing a variety of data types and gradually improving performance through boosting.
+  - **Considerations:** Similar to RF, requires careful tuning and more computational resources.
 
-Because of their ensemble nature and iterative improvements, RF and GBM models may require careful adjustment to minimize overfitting. This category also includes NNet, which has a layered structure and the possibility for deep interactions. Compared to ensemble and neural network models, MARS and SVM are easier to interpret. If model explanation is important, these may be favored despite inferior performance. RF and GBM require more training time and resources than simpler models such as MARS or SVM. 
-Given the findings, Random Forest is suggested for deployment due to its superior performance in all important measures. If there are limits on model transparency or processing resources, simpler models such as SVM or even NNet may be considered as alternatives. Further steps should include a rigorous validation process to confirm the RF model's stability, an investigation into feature engineering based on RF variable relevance, and potential ensemble procedures that could combine strengths from many models to improve prediction accuracy.
+- **Neural Network (NNet):**
+  - **Performance:** Performs well, marginally outperforming in resampling and testing metrics, making it a viable alternative if ensemble approaches are not preferred.
+  - **Strengths:** Ideal for capturing complex patterns in large datasets.
+  - **Considerations:** Demands significant computational resources and careful tuning to avoid overfitting.
+
+- **Support Vector Machine (SVM):**
+  - **Performance:** Performs well but slightly behind NNet in terms of metrics.
+  - **Strengths:** Effective for determining the ideal boundary between outputs; best suited for boundary decisions.
+  - **Considerations:** Easier to interpret compared to ensemble and neural network models.
+
+- **Multivariate Adaptive Regression Splines (MARS):**
+  - **Performance:** Beneficial for capturing nonlinear interactions but falls behind other models in performance metrics.
+  - **Strengths:** Flexible non-parametric technique capable of modeling nonlinearities and interactions.
+  - **Considerations:** Easier to interpret but less accurate compared to other models.
+
+**Final Recommendation:**
+- **Chosen Model:** Random Forest is recommended for deployment due to its superior performance in all key metrics.
+- **Next Steps:** Include rigorous validation to confirm the RF model's stability, investigate feature engineering based on RF variable importance, and explore potential ensemble methods to combine strengths from multiple models for improved prediction accuracy.
+
 
 
 ```{r compare_models}
@@ -1163,6 +1194,11 @@ write_xlsx(eval_results, "ph_predictions.xlsx")
 
 
 # 5. Conclusion
+
+Summary of Benefits: Reiterate the benefits of the predictive modeling project, emphasizing improved regulatory compliance and enhanced production efficiency.  
+Call to Action: Encourage stakeholders to consider the recommendations and support further steps to integrate analytics into production practices. 
+
+
 
 
 # References
