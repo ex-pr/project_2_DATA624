@@ -13,12 +13,13 @@ editor_options:
     wrap: sentence
 ---
 
+```{=html}
 <style>
 body {
     text-align: justify; 
 }
 </style>
-
+```
 ```{r setup, message=FALSE, warning=FALSE, include=FALSE}
 #chunks
 knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, echo=FALSE, fig.height=5, fig.align='center')
@@ -68,33 +69,53 @@ library(writexl)
 ```
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ex-pr/project_2_DATA624/refs/heads/main/logo_abc.png">
+
+<img src="https://raw.githubusercontent.com/ex-pr/project_2_DATA624/refs/heads/main/logo_abc.png"/>
+
 </p>
 
 # Overview & Introduction
 
 ## **Objective:**
 
-The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
+The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company.
+This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
 
 ## **Introduction:**
-We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. Following the discovery of missingness,the group moved to further evaluate the data through thorough exploratory data analysis. Within the EDA we confirmed that the dataset contained missing values, skewness, and outliers, with key variables like Brand Code and MFR requiring special attention in the working steps prior to modeling.
 
-After cleaning the data we shifted our attention to building models and evaluating performance. The group ended on five handpicked models to evaluate. Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS were chosen. We thought that these models would cover a range of techniques instead of focusing on one area of predictive modeling. Lastly we settled on one singular model that was more performant that any of the others.
+We began this analysis by looking into which variable would present issues for the model.
+There was a glaring problem with the state of the original beverage data.
+Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively.
+Following the discovery of missingness, the group moved to further evaluate the data through thorough exploratory data analysis.
+Within the EDA we confirmed that the dataset contained missing values, skewness, and outliers, with key variables like Brand Code and MFR requiring special attention in the working steps prior to modeling.
 
+After cleaning the data, we shifted our attention to building models and evaluating performance.
+The group ended with five handpicked models to evaluate.
+Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS were chosen.
+We thought that these models would cover a range of techniques instead of focusing on one area of predictive modeling.
+Lastly, we settled on one singular model that was more performant than any of the others.
 
 ## **Key Findings:**
-Due to the high performance relative to the other four models the group chose that random forest was the best fit. While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most. Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production. The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this models accuracy and reliability in predicting pH levels.
 
+Due to the high performance relative to the other four models the group chose that random forest was the best fit.
+While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most.
+Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production.
+The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this model's accuracy and reliability in predicting pH levels.
 
-## **Background:** 
-pH is a critical quality metric in beverage production because it directly affects the flavor, safety, shelf life, and consistency of the product. Maintaining the correct pH level ensures that the beverage is resistant to microbial growth and chemical deterioration, which is essential for consumer safety and product stability. Regulatory requirements mandate that beverage manufacturers closely monitor and control pH levels to meet industry standards and ensure product quality. Non-compliance with these regulations can lead to product recalls, legal issues, and damage to the company's reputation. The FDA has a slew of resources and best practices about this.
+## **Background:**
+
+pH is a critical quality metric in beverage production because it directly affects the flavor, safety, shelf life, and consistency of the product.
+Maintaining the correct pH level ensures that the beverage is resistant to microbial growth and chemical deterioration, which is essential for consumer safety and product stability.
+Regulatory requirements mandate that beverage manufacturers closely monitor and control pH levels to meet industry standards and ensure product quality.
+Non-compliance with these regulations can lead to product recalls, legal issues, and damage to the company's reputation.
+The FDA has a slew of resources and best practices about this.
 
 # 1. Data Exploration
 
 ## 1.1 Load data
 
-Data for training and evaluation are obtained from the GitHub repo via URLs, ensuring that the most recent version is used for analysis. Temporary files are used as intermediate storage to speed up the data collecting process.
+Data for training and evaluation are obtained from the GitHub repo via URLs, ensuring that the most recent version is used for analysis.
+Temporary files are used as intermediate storage to speed up the data collecting process.
 
 ```{r load_data}
 #Load train data
@@ -126,43 +147,51 @@ eval_df <- data_eval
 
 ## 1.2 Summary Statistics
 
-Beverage dataset: 2571 rows x 33 columns.  
-Evaluation dataset: 267 rows x 33 columns.  
-Mostly numeric, with one categorical variable (Brand Code).  
+Beverage dataset: 2571 rows x 33 columns.\
+Evaluation dataset: 267 rows x 33 columns.\
+Mostly numeric, with one categorical variable (Brand Code).
 
-- NAs:  
-Brand Code: ~4.7% missing in beverage_df, ~3.0% missing in eval_df.  
-Many numeric features have a small percentage of missing values, generally < 2%.  
-PH: 4 NAs for Brand code B, the target variable in beverage_df. eval_df has all values missing for PH (used for prediction).  
-Impute missing values for numeric features using median or mean (or more advanced imputation if correlated features exist). Missing values should be handled within a robust pipeline to avoid information loss.  
+-   NAs:\
+    Brand Code: \~4.7% missing in beverage_df, \~3.0% missing in eval_df.\
+    Many numeric features have a small percentage of missing values, generally \< 2%.\
+    PH: 4 NAs for Brand code B, the target variable in beverage_df.
+    eval_df has all values missing for PH (used for prediction).\
+    Impute missing values for numeric features using median or mean (or more advanced imputation if correlated features exist).
+    Missing values should be handled within a robust pipeline to avoid information loss.
 
-- Skewness and outliers  
-Variables like Mnf Flow have extreme values (mean is heavily influenced by outliers). Range: -100.2 to 229.4.  
-PH: Check for extreme pH values that may affect model accuracy.  
-Hyd Pressure1–4: High standard deviations (e.g., Hyd Pressure2 with a mean of ~21 and SD of 16.4).  
-Analyze the distribution of these variables using histograms or boxplots. Maybe winsorization or BoxCox/log transformation for skewed distributions.
+-   Skewness and outliers\
+    Variables like Mnf Flow have extreme values (mean is heavily influenced by outliers).
+    Range: -100.2 to 229.4.\
+    PH: Check for extreme pH values that may affect model accuracy.\
+    Hyd Pressure1--4: High standard deviations (e.g., Hyd Pressure2 with a mean of \~21 and SD of 16.4).\
+    Analyze the distribution of these variables using histograms or boxplots.
+    Maybe winsorization or BoxCox/log transformation for skewed distributions.
 
-- Feature Importance for PH pred  
-Carb Volume, Fill Ounces, PC Volume, Carb Pressure, and Carb Temp have small sd and are likely controlled manufacturing parameters. These might directly influence pH.  
-Brand Code can be treated as a categorical predictor for brand-specific variations.  
-Correlation or feature importance to identify which variables most strongly influence PH.  
+-   Feature Importance for PH pred\
+    Carb Volume, Fill Ounces, PC Volume, Carb Pressure, and Carb Temp have small sd and are likely controlled manufacturing parameters.
+    These might directly influence pH.\
+    Brand Code can be treated as a categorical predictor for brand-specific variations.\
+    Correlation or feature importance to identify which variables most strongly influence PH.
 
-- Brand Code: 4 levels (A, B, C, D).  
-Unbalanced distribution: B accounts for ~50% of records, while A, C, and D are much smaller. The imbalance might affect models like decision trees or ensemble methods.  
-Apply stratified sampling or weighting to handle imbalance during training. Explore interaction effects between Brand Code and numeric variables.
+-   Brand Code: 4 levels (A, B, C, D).\
+    Unbalanced distribution: B accounts for \~50% of records, while A, C, and D are much smaller.
+    The imbalance might affect models like decision trees or ensemble methods.\
+    Apply stratified sampling or weighting to handle imbalance during training.
+    Explore interaction effects between Brand Code and numeric variables.
 
-- Multicollinearity  
-Variables such as Carb Volume, PC Volume, and Carb Pressure might be correlated due to their role in carbonation.  
-Multiple pressure-related variables (Carb Pressure1, Fill Pressure, etc.) and filler speed/level metrics could also have collinear relationships.  
-Compute a correlation matrix to detect highly correlated predictors.  
+-   Multicollinearity\
+    Variables such as Carb Volume, PC Volume, and Carb Pressure might be correlated due to their role in carbonation.\
+    Multiple pressure-related variables (Carb Pressure1, Fill Pressure, etc.) and filler speed/level metrics could also have collinear relationships.\
+    Compute a correlation matrix to detect highly correlated predictors.
 
-- Data Leakage  
-Variables like PSC, PSC Fill, and PSC CO could be downstream measures dependent on pH. Confirm whether these are part of the production process or outcome metrics.  
-Analyze the production process to ensure no data leakage into the model.
+-   Data Leakage\
+    Variables like PSC, PSC Fill, and PSC CO could be downstream measures dependent on pH. Confirm whether these are part of the production process or outcome metrics.\
+    Analyze the production process to ensure no data leakage into the model.
 
-- eval_df  
-All PH values are missing for prediction.  
-Structure and missingness are similar to beverage_df. Ensure preprocessing and feature engineering pipelines are consistent between training and evaluation datasets.
+-   eval_df\
+    All PH values are missing for prediction.\
+    Structure and missingness are similar to beverage_df.
+    Ensure preprocessing and feature engineering pipelines are consistent between training and evaluation datasets.
 
 ```{r summary_statistics}
 #Check first rows of data
@@ -262,52 +291,55 @@ DT::datatable(
   DT::formatRound(columns = c("Min", "Q1", "Median", "Mean", "Q3", "Max", "StdDev"), digits = 3)
 ```
 
-
-## 1.3 EDA 
+## 1.3 EDA
 
 ### Featured Variables:
 
-**Carb Volume:** Volume of the beverage that is carbonated.  
-**Fill Ounces:** Volume of the beverage filled into containers, measured in ounces.  
-**PC Volume:** Could indicate "Process Control Volume," a measure related to production parameters.  
-**Carb Pressure:** Pressure used during the carbonation process.  
-**Carb Temp:** Temperature of the beverage during carbonation.  
-**PSC:** Potentially a quality control metric, the exact meaning would depend on industry context.  
-**PSC Fill:** Quality or quantity metric related to the filling process.  
-**PSC CO2:** Measures CO2 levels or pressure during processing.  
-**Mnf Flow:** Manufacturing flow rate, likely related to how fast the production line operates.  
-**Carb Pressure1:** Another measurement of pressure during carbonation, possibly at a different production stage.  
-**Fill Pressure:** Pressure maintained during the filling of beverages into containers.  
-**Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4:** Different points of hydraulic pressure measurement within the machinery.  
-**Filler Level:** Level to which containers are filled; critical for consistency.  
-**Filler Speed:** Speed at which the filling machinery operates.  
-**Temperature:** General temperature measurement.  
-**Carb Flow:** Flow rate of the carbonation process.  
-**Density:** Physical density of the beverage, which impacts taste and mouth feel.  
-**MFR:** Manufacturer’s reference; could relate to specific production settings or machine identifiers.  
-**Balling:** Measurement related to the sugar content of a liquid, typically used in brewing.    
-**Pressure Vacuum:** Pressure readings from a vacuum process, possibly in packaging.  
-**Oxygen Filler:** Likely measures the presence of oxygen during filling, which must be minimized in certain beverages.  
-**Bowl Setpoint:** Setpoint for a particular part of the machinery, possibly related to mixing or blending.  
-**Pressure Setpoint:** Target pressure to be maintained within certain machinery or process stages.  
-**Air Pressurer:** Air pressure readings.  
-**Alch Rel:** Could be "Alcohol Release" or related to the alcohol content management.  
-**Carb Rel:** Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.  
+**Carb Volume:** Volume of the beverage that is carbonated.\
+**Fill Ounces:** Volume of the beverage filled into containers, measured in ounces.\
+**PC Volume:** Could indicate "Process Control Volume," a measure related to production parameters.\
+**Carb Pressure:** Pressure used during the carbonation process.\
+**Carb Temp:** Temperature of the beverage during carbonation.\
+**PSC:** Potentially a quality control metric, the exact meaning would depend on industry context.\
+**PSC Fill:** Quality or quantity metric related to the filling process.\
+**PSC CO2:** Measures CO2 levels or pressure during processing.\
+**Mnf Flow:** Manufacturing flow rate, likely related to how fast the production line operates.\
+**Carb Pressure1:** Another measurement of pressure during carbonation, possibly at a different production stage.\
+**Fill Pressure:** Pressure maintained during the filling of beverages into containers.\
+**Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4:** Different points of hydraulic pressure measurement within the machinery.\
+**Filler Level:** Level to which containers are filled; critical for consistency.\
+**Filler Speed:** Speed at which the filling machinery operates.\
+**Temperature:** General temperature measurement.\
+**Carb Flow:** Flow rate of the carbonation process.\
+**Density:** Physical density of the beverage, which impacts taste and mouth feel.\
+**MFR:** Manufacturer's reference; could relate to specific production settings or machine identifiers.\
+**Balling:** Measurement related to the sugar content of a liquid, typically used in brewing.\
+**Pressure Vacuum:** Pressure readings from a vacuum process, possibly in packaging.\
+**Oxygen Filler:** Likely measures the presence of oxygen during filling, which must be minimized in certain beverages.\
+**Bowl Setpoint:** Setpoint for a particular part of the machinery, possibly related to mixing or blending.\
+**Pressure Setpoint:** Target pressure to be maintained within certain machinery or process stages.\
+**Air Pressurer:** Air pressure readings.\
+**Alch Rel:** Could be "Alcohol Release" or related to the alcohol content management.\
+**Carb Rel:** Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.\
 **Balling Lvl:** Specific gravity of the liquid related to its sugar content, important in quality control in brewing and beverage manufacturing.
 
 ### EDA Takeaways:
 
-The pH of a solution is measured on a scale from 0 to 14, indicating its acidity or alkalinity. In beverage manufacturing, maintaining the correct pH level is crucial for ensuring flavor, safety, shelf life, and uniformity.
+The pH of a solution is measured on a scale from 0 to 14, indicating its acidity or alkalinity.
+In beverage manufacturing, maintaining the correct pH level is crucial for ensuring flavor, safety, shelf life, and uniformity.
 
-The data shows that the most common pH level is around 8.5, which appears to be the target for many batches of beverages. For carbonated beverages, a slightly alkaline pH level can:
-- **Improve Taste:** Balance the tang of carbonation with a smoother, less acidic flavor.
-- **Aid in Shelf Stability:** Ensure the beverage is resistant to microbial growth and chemical deterioration.
-- **Reflect Process Consistency:** Indicate consistent raw material quality, carbonation levels, and filling precision.
+The data shows that the most common pH level is around 8.5, which appears to be the target for many batches of beverages.
+For carbonated beverages, a slightly alkaline pH level can:
+
+-   **Improve Taste:** Balance the tang of carbonation with a smoother, less acidic flavor.
+-   **Aid in Shelf Stability:** Ensure the beverage is resistant to microbial growth and chemical deterioration.
+-   **Reflect Process Consistency:** Indicate consistent raw material quality, carbonation levels, and filling precision.
 
 The distribution of pH is roughly normal with a slight negative skew, centered around 8.5, and includes some outliers at both the lower and upper tails.
 
-Brand B has significantly more entries compared to other brands, suggesting the need for balancing or stratified sampling during model training. The pH distribution varies across Brand Codes, with Brand C having the lowest median pH and Brand B the highest. Outliers are present in all brand codes, and it is important to investigate whether these outliers are due to measurement errors or valid extreme cases.
-
+Brand B has significantly more entries compared to other brands, suggesting the need for balancing or stratified sampling during model training.
+The pH distribution varies across Brand Codes, with Brand C having the lowest median pH and Brand B the highest.
+Outliers are present in all brand codes, and it is important to investigate whether these outliers are due to measurement errors or valid extreme cases.
 
 ```{r ph_plots}
 #Distribution PH plot
@@ -336,21 +368,19 @@ ggplot(filtered_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
 
 Several variables in the dataset exhibit notable characteristics and potential issues:
 
-- **Outliers:** MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint contain outliers that may need to be addressed.
-- **Bimodal Distribution:** Variables such as Alch Rel, Balling, and Balling Lvl show bimodal distributions, suggesting that binning might be necessary.
-- **Long-Tailed Distribution:** Mnf Flow has a long-tailed distribution, which could affect model performance.
-- **Sharp Peaks:** Filler Speed, Hyd Pressure2, and Usage Cont exhibit sharp peaks in their distributions.
-- **Spread and Skewness:** Hyd Pressure4 shows an interesting spread, providing insights into process variability. MFR and Oxygen Filler are heavily right-skewed, indicating the need for normalization.
+-   **Outliers:** MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint contain outliers that may need to be addressed.
+-   **Bimodal Distribution:** Variables such as Alch Rel, Balling, and Balling Lvl show bimodal distributions, suggesting that binning might be necessary.
+-   **Long-Tailed Distribution:** Mnf Flow has a long-tailed distribution, which could affect model performance.
+-   **Sharp Peaks:** Filler Speed, Hyd Pressure2, and Usage Cont exhibit sharp peaks in their distributions.
+-   **Spread and Skewness:** Hyd Pressure4 shows an interesting spread, providing insights into process variability. MFR and Oxygen Filler are heavily right-skewed, indicating the need for normalization.
 
 For variables like MFR and Usage Cont, applying log or Box-Cox transformations can help normalize their distributions.
 
-**Mnf Flow:**
-- A value of -100 appears frequently, which could indicate:
-  - **Missing Data:** A common placeholder value.
-  - **Domain-Specific Encoding:** For example, representing "no flow" or a specific state in manufacturing.
-  - **Data Error:** A mistake in data collection or recording.
-- It is essential to confirm whether -100 is a legitimate value or a placeholder. If it is a placeholder, it should be treated as missing and imputed or removed to ensure data integrity.
-
+**Mnf Flow:** - A value of -100 appears frequently, which could indicate: - **Missing Data:** A common placeholder value.
+- **Domain-Specific Encoding:** For example, representing "no flow" or a specific state in manufacturing.
+- **Data Error:** A mistake in data collection or recording.
+- It is essential to confirm whether -100 is a legitimate value or a placeholder.
+If it is a placeholder, it should be treated as missing and imputed or removed to ensure data integrity.
 
 ```{r group_plots}
 group_1 <- c("Carb Pressure", "Carb Pressure1", "Carb Temp", "Temperature", 
@@ -400,7 +430,7 @@ beverage_df %>%
 The dataset contains varying levels of missing values across different variables:
 
 - **MFR:** This variable has the highest percentage of missing values at around 7%. It may be challenging to collect consistently or might not be relevant across all rows. If MFR is critical, consider using mean, median, or model-based imputation. If it does not strongly correlate with the target variable or other features, it might be best to drop it.
-- **Variables with <3% Missingness:** For variables like PSC CO2 and PC Volume, which have less than 3% missing values, simple imputation techniques can be applied.
+- **Variables with \<3% Missingness:** For variables like PSC CO2 and PC Volume, which have less than 3% missing values, simple imputation techniques can be applied.
 - **Brand Code:** Mode imputation is recommended for handling missing values in the Brand Code variable.
 
 ```{r na_scatterplt_ph_vs_features}
@@ -428,19 +458,24 @@ for (var in numeric_vars) {
 
 ### Preliminary Findings:
 
-The data revealed several important correlations and potential multicollinearity issue. We used this correlation matrix to try and begin to understand the interworkings of the production process. Below is a write-up of these initial findings.
+The data revealed several important correlations and potential multicollinearity issue.
+We used this correlation matrix to try and begin to understand the interworkings of the production process.
+Below is a write-up of these initial findings.
 
 - **Intercorrelations:** Density, Balling, and Carb Rel show strong intercorrelations, which could lead to multicollinearity issues in linear regression models.
 - **Negative Correlations:** Mnf Flow and Usage Cont have strong negative correlations, suggesting the need for additional preprocessing or transformation before moving to model selection.
 - **Interaction Terms:** Exploring interaction terms between variables like Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could provide further insights into their relationships with pH.
 
-**Key Variable Correlations:**
-- **Bowl Setpoint (correlation: 0.36):** This parameter likely affects the flow or intensity of ingredient mixing during carbonation or flavoring stages. A higher bowl setpoint may result in more uniform mixing, reducing pH variability.
-- **Filler Level (correlation: 0.35):** Ensures containers are properly filled to prevent extra air or gas imbalances. Variations in filler level can influence carbonation levels and pH, so proper calibration is essential.
-- **Pressure Vacuum (correlation: 0.22):** Assists with gas exchange during filling. Variations in vacuum pressure can cause inconsistent carbonation, affecting pH. Monitoring this parameter ensures the desired carbonation "bite."
-- **Oxygen Filler (correlation: 0.17):** Determines the amount of oxygen introduced during filling. Higher oxygen levels can accelerate oxidation, reducing pH and compromising flavor stability. Maintaining low oxygen levels is crucial for product quality.
-- **Mnf Flow (correlation: -0.45):** Describes the rate at which materials flow during production. A higher flow rate may result in irregular mixing, reduced carbonation, and a shift in pH. Adjusting flow rates helps maintain consistent product attributes.
-
+**Key Variable Correlations:** - **Bowl Setpoint (correlation: 0.36):** This parameter likely affects the flow or intensity of ingredient mixing during carbonation or flavoring stages.
+A higher bowl setpoint may result in more uniform mixing, reducing pH variability.
+- **Filler Level (correlation: 0.35):** Ensures containers are properly filled to prevent extra air or gas imbalances.
+Variations in filler level can influence carbonation levels and pH, so proper calibration is essential.
+- **Pressure Vacuum (correlation: 0.22):** Assists with gas exchange during filling.
+Variations in vacuum pressure can cause inconsistent carbonation, affecting pH. Monitoring this parameter ensures the desired carbonation "bite." - **Oxygen Filler (correlation: 0.17):** Determines the amount of oxygen introduced during filling.
+Higher oxygen levels can accelerate oxidation, reducing pH and compromising flavor stability.
+Maintaining low oxygen levels is crucial for product quality.
+- **Mnf Flow (correlation: -0.45):** Describes the rate at which materials flow during production.
+A higher flow rate may result in irregular mixing, reduced carbonation, and a shift in pH. Adjusting flow rates helps maintain consistent product attributes.
 
 ```{r corr}
 tst <- beverage_df %>% 
@@ -468,41 +503,31 @@ corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.
          type="upper", order="hclust", number.cex=0.45, diag=FALSE)
 ```
 
-
 # 2. Data Preparation
 
 ### Identification of problem areas
 
 - **Standardizing Column Names:**
-  - Using `make_clean_names()` to eliminate issues caused by case sensitivity or spaces, making data manipulation easier and less error-prone.
-
+    - Using `make_clean_names()` to eliminate issues caused by case sensitivity or spaces, making data manipulation easier and less error-prone.
 - **Zero Variance Predictors:**
-  - Identifying and removing zero variance predictors (e.g., Hyd Pressure1) to simplify the modeling process, boost computational efficiency, and potentially increase model performance.
-
+    - Identifying and removing zero variance predictors (e.g., Hyd Pressure1) to simplify the modeling process, boost computational efficiency, and potentially increase model performance.
 - **Missing Value Imputation:**
-  - **K-Nearest Neighbors (KNN):** Fills in missing values using the average (or median) of the 'k' most similar occurrences. Ideal for large datasets with simple relationships.
-  - **Random Forest Imputation:** Captures non-linear correlations by learning decision rules from other features, providing more accurate approximations than simpler methods like mode imputation.
-
+    - **K-Nearest Neighbors (KNN):** Fills in missing values using the average (or median) of the 'k' most similar occurrences. Ideal for large datasets with simple relationships.
+    - **Random Forest Imputation:** Captures non-linear correlations by learning decision rules from other features, providing more accurate approximations than simpler methods like mode imputation.
 - **Handling Mnf Flow Values:**
-  - If '-100' is not a valid data point, mark it as missing and use KNN imputation to ensure replacement values reflect typical operational data, preserving consistency in the manufacturing flow analysis.
-
+    - If '-100' is not a valid data point, mark it as missing and use KNN imputation to ensure replacement values reflect typical operational data, preserving consistency in the manufacturing flow analysis.
 - **Outliers:**
-  - Initially not adjusted to retain important information about the system's behavior under unusual conditions, which can be crucial for predictive modeling.
-
+    - Initially not adjusted to retain important information about the system's behavior under unusual conditions, which can be crucial for predictive modeling.
 - **One-Hot Encoding:**
-  - Converts categorical variables, such as Brand Code, into binary variables, making the model more adaptable in learning patterns unique to each category.
-
+    - Converts categorical variables, such as Brand Code, into binary variables, making the model more adaptable in learning patterns unique to each category.
 - **Interaction Terms and Polynomial Features:**
-  - **Interaction Terms:** Simulate the effects of interactions between variables on pH levels (e.g., pc_volume_pressure).
-  - **Polynomial Features:** Capture non-linear interactions (e.g., carb_volume2).
-
+    - **Interaction Terms:** Simulate the effects of interactions between variables on pH levels (e.g., pc_volume_pressure).
+    - **Polynomial Features:** Capture non-linear interactions (e.g., carb_volume2).
 - **Binning Continuous Variables:**
-  - Helps manage non-linear effects and improve model performance by transforming continuous variables into categorical ones (e.g., carb_temp_binned).
-
+    - Helps manage non-linear effects and improve model performance by transforming continuous variables into categorical ones (e.g., carb_temp_binned).
 - **Transformations:**
-  - **Log and Square Root Transformations:** Applied to variables like filler_speed and air_pressurer to standardize their distributions and reduce skewness.
-  - Transformations help reduce variance and make data more normally distributed, enhancing the effectiveness of many statistical learning approaches that rely on normally distributed data.
-
+    - **Log and Square Root Transformations:** Applied to variables like filler_speed and air_pressurer to standardize their distributions and reduce skewness.
+    - Transformations help reduce variance and make data more normally distributed, enhancing the effectiveness of many statistical learning approaches that rely on normally distributed data.
 
 ## 2.1 Missing values
 
@@ -524,8 +549,7 @@ beverage_df <- beverage_df[, !zero_var$nzv]
 eval_df <- eval_df[, !zero_var$nzv]
 ```
 
-**Imputing missing values**
-knnImputation was used for for numeric variables and Random Forest was used for Brand Code and mnf_flow.
+**Imputing missing values** knnImputation was used for for numeric variables and Random Forest was used for Brand Code and mnf_flow.
 
 ```{r impute_numeric}
 set.seed(547)
@@ -549,7 +573,6 @@ eval_imputed$ph <- eval_df$ph
 colSums(is.na(beverage_imputed))
 colSums(is.na(eval_imputed))
 ```
-
 
 ```{r brand_Code_impute}
 set.seed(547)
@@ -677,7 +700,8 @@ eval_transformed$psc_co2 <- log(eval_transformed$psc_co2 + 1)
 
 #### Comparing newly formed and transformed variables
 
-The team created six new transformation for six original variables in the dataset to try an improve performance. The changes were seen across both the original dataset and the eval dataset.
+The team created six new transformation for six original variables in the dataset to try an improve performance.
+The changes were seen across both the original dataset and the eval dataset.
 
 **Transformed Variables and the transformations applied:**
 
@@ -727,30 +751,24 @@ DT::datatable(
   )) 
 ```
 
-
 # 3. Build Models
 
 ### Model Building and Evaluation
 
-- **Data Splitting:**
-  - Splitting data into training and testing sets using `createDataPartition()`. This approach tests the model with previously unseen data to predict real-world performance.
-  - Using a stratified sampling strategy ensures that the distribution of essential variables (such as pH levels) remains consistent across training and testing sets.
-
-- **Model Selection:**
-  - **Random Forest:** Effective for handling non-linear relationships and resistant to overfitting.
-  - **Gradient Boosting:** Manages a variety of data types and gradually improves performance through boosting.
-  - **Neural Networks:** Ideal for capturing complex patterns in large datasets but may require significant computational resources.
-  - **Support Vector Machine (SVM):** Effective for determining the ideal boundary between outputs; best suited for boundary decisions rather than probability estimations.
-  - **MARS (Multivariate Adaptive Regression Splines):** A flexible non-parametric technique capable of effectively modeling nonlinearities and interactions.
-
-- **Cross-Validation:**
-  - Specified in `trainControl()`, cross-validation ensures rigorous validation and prevents the model from being tailored to a single subset of the data.
-  - Repeated cross-validation helps reduce variance in the model evaluation process, resulting in a more accurate performance estimate.
-
-- **Hyperparameter Tuning:**
-  - Using grids (`expand.grid()`) for distinct model parameters enables systematic searching through a set of alternatives to discover the ideal combination that maximizes model performance.
-
-
+-   **Data Splitting:**
+    -   Splitting data into training and testing sets using `createDataPartition()`. This approach tests the model with previously unseen data to predict real-world performance.
+    -   Using a stratified sampling strategy ensures that the distribution of essential variables (such as pH levels) remains consistent across training and testing sets.
+-   **Model Selection:**
+    -   **Random Forest:** Effective for handling non-linear relationships and resistant to overfitting.
+    -   **Gradient Boosting:** Manages a variety of data types and gradually improves performance through boosting.
+    -   **Neural Networks:** Ideal for capturing complex patterns in large datasets but may require significant computational resources.
+    -   **Support Vector Machine (SVM):** Effective for determining the ideal boundary between outputs; best suited for boundary decisions rather than probability estimations.
+    -   **MARS (Multivariate Adaptive Regression Splines):** A flexible non-parametric technique capable of effectively modeling nonlinearities and interactions.
+-   **Cross-Validation:**
+    -   Specified in `trainControl()`, cross-validation ensures rigorous validation and prevents the model from being tailored to a single subset of the data.
+    -   Repeated cross-validation helps reduce variance in the model evaluation process, resulting in a more accurate performance estimate.
+-   **Hyperparameter Tuning:**
+    -   Using grids (`expand.grid()`) for distinct model parameters enables systematic searching through a set of alternatives to discover the ideal combination that maximizes model performance.
 
 ```{r parallel_core}
 #Detect the number of available cores
@@ -780,13 +798,17 @@ eval_transformed <- subset(eval_transformed, select = -ph)
 control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, allowParallel = TRUE)
 ```
 
-**MARS**
+#### **MARS**
 
-MARS is a versatile modeling method that captures nonlinearities and variable interactions effectively. Data preparation involves scaling and centering to standardize feature scales. The model is trained using the earth method with a parameter grid specifying degrees and the number of pruning terms (nprune).
+MARS is a versatile modeling method that captures nonlinearities and variable interactions effectively.
+Data preparation involves scaling and centering to standardize feature scales.
+The model is trained using the earth method with a parameter grid specifying degrees and the number of pruning terms (nprune).
 
-MARS builds models by generating piecewise linear splines, useful for handling complex, non-linear interactions. To avoid overfitting, it starts with the maximum number of basis functions and prunes them using the generalized cross-validation criterion.
+MARS builds models by generating piecewise linear splines, useful for handling complex, non-linear interactions.
+To avoid overfitting, it starts with the maximum number of basis functions and prunes them using the generalized cross-validation criterion.
 
-The best model, with a degree of 2 and 20 pruning terms, showed an RMSE of 0.1269, R-squared of 0.459, and MAE of 0.0960 on the training set. The most influential variable was mnf_flow, followed by brand_code.C and hyd_pressure3, indicating these factors are critical in predicting pH levels.
+The best model, with a degree of 2 and 20 pruning terms, showed an RMSE of 0.1269, R-squared of 0.459, and MAE of 0.0960 on the training set.
+The most influential variable was mnf_flow, followed by brand_code.C and hyd_pressure3, indicating these factors are critical in predicting pH levels.
 
 ```{r mars_model}
 set.seed(123)
@@ -815,19 +837,11 @@ mars_results <- postResample(pred = marsPred, obs = test_transformed$ph)
 mars_results
 ```
 
-                Overall
-mnf_flow         100.00
-brand_code.C      72.84
-hyd_pressure3     70.05
-alch_rel          64.81
-bowl_setpoint     60.48
-pressure_vacuum   57.10
-air_pressurer     49.35
-balling           42.60
-density           39.93
-temperature       30.51
-usage_cont        22.44
-carb_pressure1    18.34
+```         
+            Overall
+```
+
+mnf_flow 100.00 brand_code.C 72.84 hyd_pressure3 70.05 alch_rel 64.81 bowl_setpoint 60.48 pressure_vacuum 57.10 air_pressurer 49.35 balling 42.60 density 39.93 temperature 30.51 usage_cont 22.44 carb_pressure1 18.34
 
 ```{r mars_varimpt}
 importance_mars <- varImp(marsModel, scale = FALSE)
@@ -835,16 +849,19 @@ importance_mars
 plot(importance_mars, top = 10, main = "Top 10 predictors, MARS Model")
 ```
 
+#### **Support Vector Machine**
 
-**Support Vector Machine**
+SVM data preparation involves scaling and centering, which are critical for this model because it creates a hyperplane in high-dimensional space to distinguish various classes.
+The scale of the data influences the hyperplane's location, and unscaled data might mislead the learning algorithm by emphasizing larger-scale elements disproportionately.
 
-SVM data preparation involves scaling and centering, which are critical for this model because it creates a hyperplane in high-dimensional space to distinguish various classes. The scale of the data influences the hyperplane's location, and unscaled data might mislead the learning algorithm by emphasizing larger-scale elements disproportionately.
-
-SVM is constructed by determining the best hyperplane that divides the classes with the greatest margin. It is resistant to outliers and effective in high-dimensional spaces. Kernel functions, such as the radial basis function utilized here, enable SVM to learn non-linear bounds, making it suitable for a variety of data patterns.
+SVM is constructed by determining the best hyperplane that divides the classes with the greatest margin.
+It is resistant to outliers and effective in high-dimensional spaces.
+Kernel functions, such as the radial basis function utilized here, enable SVM to learn non-linear bounds, making it suitable for a variety of data patterns.
 
 Achieved an RMSE of 0.1194, R-squared of 0.5236, and MAE of 0.0877, showing slightly better performance than MARS.
 
 Illustrated less reliance on any single variable, with mnf_flow still significant but less dominant, showcasing SVM's distribution of importance across multiple features.
+
 ```{r svm_model}
 set.seed(123)
 #Grid with parameters
@@ -872,27 +889,11 @@ svm_results
 
 Variable importance
 
-                   Overall
-mnf_flow          0.229134
-usage_cont        0.149547
-bowl_setpoint     0.114516
-filler_level      0.101887
-pressure_setpoint 0.097533
-carb_flow         0.086556
-brand_code.C      0.078800
-hyd_pressure3     0.053540
-pressure_vacuum   0.048704
-fill_pressure     0.043607
-hyd_pressure2     0.034975
-brand_code.D      0.034145
-oxygen_filler     0.032301
-carb_rel          0.024706
-hyd_pressure4     0.024241
-temperature       0.024065
-alch_rel          0.019814
-brand_code.B      0.012828
-psc               0.009141
-fill_ounces       0.008995
+```         
+               Overall
+```
+
+mnf_flow 0.229134 usage_cont 0.149547 bowl_setpoint 0.114516 filler_level 0.101887 pressure_setpoint 0.097533 carb_flow 0.086556 brand_code.C 0.078800 hyd_pressure3 0.053540 pressure_vacuum 0.048704 fill_pressure 0.043607 hyd_pressure2 0.034975 brand_code.D 0.034145 oxygen_filler 0.032301 carb_rel 0.024706 hyd_pressure4 0.024241 temperature 0.024065 alch_rel 0.019814 brand_code.B 0.012828 psc 0.009141 fill_ounces 0.008995
 
 ```{r svm_varimpt}
 importance_svm <- varImp(svmModel, scale = FALSE)
@@ -900,15 +901,19 @@ importance_svm
 plot(importance_svm, top = 10, main = "Top 10 predictors, SVM Model")
 ```
 
-**Neural networks**
+#### **Neural networks**
 
-Data standardization is required for neural networks to learn efficiently. Scaling and centering reduce the dominance of higher magnitude features and improve gradient descent optimization by guaranteeing more uniform scaling across all inputs.
+Data standardization is required for neural networks to learn efficiently.
+Scaling and centering reduce the dominance of higher magnitude features and improve gradient descent optimization by guaranteeing more uniform scaling across all inputs.
 
-Neural networks are made up of layers of interconnected nodes, with each connection representing a weight; the nodes apply activation functions to their input data. Training entails altering these weights based on the difference between expected and actual results. The model utilized here, avNNet, is an ensemble of neural networks that stabilize predictions.
+Neural networks are made up of layers of interconnected nodes, with each connection representing a weight; the nodes apply activation functions to their input data.
+Training entails altering these weights based on the difference between expected and actual results.
+The model utilized here, avNNet, is an ensemble of neural networks that stabilize predictions.
 
 Noted for the best R-squared of 0.5586 among the models with an RMSE of 0.1145 and MAE of 0.0856, suggesting a strong fit.
 
 Similar to SVM, shows a balanced importance across several predictors, highlighting the model's use of complex feature interactions.
+
 ```{r nnet_model}
 set.seed(123)
 #Grid with parameters
@@ -938,27 +943,11 @@ nnet_results
 
 Variable importance
 
-                   Overall
-mnf_flow          0.229134
-usage_cont        0.149547
-bowl_setpoint     0.114516
-filler_level      0.101887
-pressure_setpoint 0.097533
-carb_flow         0.086556
-brand_code.C      0.078800
-hyd_pressure3     0.053540
-pressure_vacuum   0.048704
-fill_pressure     0.043607
-hyd_pressure2     0.034975
-brand_code.D      0.034145
-oxygen_filler     0.032301
-carb_rel          0.024706
-hyd_pressure4     0.024241
-temperature       0.024065
-alch_rel          0.019814
-brand_code.B      0.012828
-psc               0.009141
-fill_ounces       0.008995
+```         
+               Overall
+```
+
+mnf_flow 0.229134 usage_cont 0.149547 bowl_setpoint 0.114516 filler_level 0.101887 pressure_setpoint 0.097533 carb_flow 0.086556 brand_code.C 0.078800 hyd_pressure3 0.053540 pressure_vacuum 0.048704 fill_pressure 0.043607 hyd_pressure2 0.034975 brand_code.D 0.034145 oxygen_filler 0.032301 carb_rel 0.024706 hyd_pressure4 0.024241 temperature 0.024065 alch_rel 0.019814 brand_code.B 0.012828 psc 0.009141 fill_ounces 0.008995
 
 ```{r nnet_varimpt}
 importance_nnet <- varImp(nnetModel, scale = FALSE)
@@ -966,18 +955,21 @@ importance_nnet
 plot(importance_nnet, top = 10, main = "Top 10 predictors, avNNet Model")
 ```
 
+#### **Gradient Boosting**
 
-**Gradient Boosting**
+Scaling is not required for GBM preparation because the model is based on scale-invariant decision trees.
+However, centering and scaling are used here to ensure consistency in preprocessing across models, which aids in comparative model evaluation.
 
-Scaling is not required for GBM preparation because the model is based on scale-invariant decision trees. However, centering and scaling are used here to ensure consistency in preprocessing across models, which aids in comparative model evaluation.
-
-GBM transforms an ensemble of weak prediction models, often decision trees, into a strong learner in a sequential process. Each tree is designed to remedy mistakes in earlier trees. The learning process and model complexity are controlled by parameters such as the number of trees, tree depth, and learning rate.
+GBM transforms an ensemble of weak prediction models, often decision trees, into a strong learner in a sequential process.
+Each tree is designed to remedy mistakes in earlier trees.
+The learning process and model complexity are controlled by parameters such as the number of trees, tree depth, and learning rate.
 
 Tuned over a range of tree numbers, interaction depths, and minimum observations in nodes, using a shrinkage factor to regulate learning.
- 
+
 Exhibited the best performance metrics in this set with an RMSE of 0.1102, R-squared of 0.5956, and MAE of 0.0830.
 
 mnf_flow and brand_code.C were significant, along with other operational parameters, indicating their pivotal roles in pH level determination.
+
 ```{r gbm_model}
 set.seed(123)
 #Grid with parameters
@@ -1005,27 +997,11 @@ gbm_results
 
 Variable importance
 
-                   Overall
-mnf_flow            328.40
-brand_code.C        101.37
-alch_rel             94.79
-oxygen_filler        87.81
-usage_cont           87.32
-temperature          75.56
-carb_pressure1       59.25
-pressure_vacuum      56.63
-carb_rel             55.83
-setpoint_diff        54.23
-balling_lvl          47.54
-air_pressurer        46.17
-carb_flow            45.93
-filler_speed         45.79
-balling              43.74
-hyd_pressure3        37.20
-density              35.93
-mfr                  34.59
-hyd_pressure2        25.87
-pc_volume_pressure   25.66
+```         
+               Overall
+```
+
+mnf_flow 328.40 brand_code.C 101.37 alch_rel 94.79 oxygen_filler 87.81 usage_cont 87.32 temperature 75.56 carb_pressure1 59.25 pressure_vacuum 56.63 carb_rel 55.83 setpoint_diff 54.23 balling_lvl 47.54 air_pressurer 46.17 carb_flow 45.93 filler_speed 45.79 balling 43.74 hyd_pressure3 37.20 density 35.93 mfr 34.59 hyd_pressure2 25.87 pc_volume_pressure 25.66
 
 ```{r gbm_varimpt}
 importance_gbm <- varImp(gbm_model, scale = FALSE)
@@ -1033,12 +1009,13 @@ importance_gbm
 plot(importance_gbm, top = 10, main = "Top 10 predictors, GBM")
 ```
 
+#### **Random Forest**
 
-**Random Forest**
+Random Forest models, like GBM, are tree-based and do not require data scaling.
+The data, however, is scaled and centered to ensure that the preparation methods are consistent across all models used in the research.
 
-Random Forest models, like GBM, are tree-based and do not require data scaling. The data, however, is scaled and centered to ensure that the preparation methods are consistent across all models used in the research.
-
-During training, Random Forest generates numerous decision trees and outputs the mode of the classes (classification) or mean prediction (regression) of each tree. It is particularly effective for classification and regression, and its ensemble method allows it to handle overfitting very well.
+During training, Random Forest generates numerous decision trees and outputs the mode of the classes (classification) or mean prediction (regression) of each tree.
+It is particularly effective for classification and regression, and its ensemble method allows it to handle overfitting very well.
 
 Delivered the highest R-squared value of 0.7130, RMSE of 0.0963, and MAE of 0.0699, indicating excellent generalization.
 
@@ -1072,27 +1049,11 @@ rf_results
 
 Variable importance
 
-      Overall
-mnf_flow          44.54
-oxygen_filler     34.35
-pressure_vacuum   31.16
-carb_rel          29.64
-air_pressurer     29.19
-brand_code.C      28.84
-temperature       28.52
-filler_speed      28.06
-balling_lvl       28.02
-alch_rel          24.77
-usage_cont        24.45
-density           23.91
-balling           23.79
-carb_flow         22.90
-setpoint_diff     21.78
-carb_volume2      21.00
-carb_pressure1    20.62
-hyd_pressure3     18.45
-filler_level      17.95
-mfr               17.05
+```         
+  Overall
+```
+
+mnf_flow 44.54 oxygen_filler 34.35 pressure_vacuum 31.16 carb_rel 29.64 air_pressurer 29.19 brand_code.C 28.84 temperature 28.52 filler_speed 28.06 balling_lvl 28.02 alch_rel 24.77 usage_cont 24.45 density 23.91 balling 23.79 carb_flow 22.90 setpoint_diff 21.78 carb_volume2 21.00 carb_pressure1 20.62 hyd_pressure3 18.45 filler_level 17.95 mfr 17.05
 
 ```{r rf_variimpt}
 importance_rf <- varImp(rf_model, scale = FALSE)
@@ -1105,44 +1066,37 @@ plot(importance_rf, top = 10, main = "Top 10 predictors, Random Forest")
 stopCluster(cl)
 ```
 
-
 # 4. Model Selection
 
-
-Resampling metrics (RMSE, R², and MAE) from model training are compared to test metrics to evaluate overfitting and generalization capabilities. Models are judged on predicted accuracy, robustness, and computational efficiency. The final decision is based on these criteria to produce a model that performs well under various circumstances.
+Resampling metrics (RMSE, R², and MAE) from model training are compared to test metrics to evaluate overfitting and generalization capabilities.
+Models are judged on predicted accuracy, robustness, and computational efficiency.
+The final decision is based on these criteria to produce a model that performs well under various circumstances.
 
 **Detailed Bullet Points Describing Each Model:**
 
-- **Random Forest (RF):**
-  - **Performance:** Outperforms in almost all metrics with the lowest RMSE (0.0963) and highest R-squared (0.7130). The MAE is also the lowest at 0.0699, indicating predictions are close to actual values with minimal error.
-  - **Strengths:** High accuracy, robustness, and ability to handle non-linear relationships.
-  - **Considerations:** Requires more training time and resources; careful tuning needed to avoid overfitting.
+-   **Random Forest (RF):**
+    -   **Performance:** Outperforms in almost all metrics with the lowest RMSE (0.0963) and highest R-squared (0.7130). The MAE is also the lowest at 0.0699, indicating predictions are close to actual values with minimal error.
+    -   **Strengths:** High accuracy, robustness, and ability to handle non-linear relationships.
+    -   **Considerations:** Requires more training time and resources; careful tuning needed to avoid overfitting.
+-   **Gradient Boosting Machine (GBM):**
+    -   **Performance:** Competitive scores, particularly in test R-squared (0.6445), showing resilience in handling dataset variations.
+    -   **Strengths:** Effective for managing a variety of data types and gradually improving performance through boosting.
+    -   **Considerations:** Similar to RF, requires careful tuning and more computational resources.
+-   **Neural Network (NNet):**
+    -   **Performance:** Performs well, marginally outperforming in resampling and testing metrics, making it a viable alternative if ensemble approaches are not preferred.
+    -   **Strengths:** Ideal for capturing complex patterns in large datasets.
+    -   **Considerations:** Demands significant computational resources and careful tuning to avoid overfitting.
+-   **Support Vector Machine (SVM):**
+    -   **Performance:** Performs well but slightly behind NNet in terms of metrics.
+    -   **Strengths:** Effective for determining the ideal boundary between outputs; best suited for boundary decisions.
+    -   **Considerations:** Easier to interpret compared to ensemble and neural network models.
+-   **Multivariate Adaptive Regression Splines (MARS):**
+    -   **Performance:** Beneficial for capturing nonlinear interactions but falls behind other models in performance metrics.
+    -   **Strengths:** Flexible non-parametric technique capable of modeling nonlinearities and interactions.
+    -   **Considerations:** Easier to interpret but less accurate compared to other models.
 
-- **Gradient Boosting Machine (GBM):**
-  - **Performance:** Competitive scores, particularly in test R-squared (0.6445), showing resilience in handling dataset variations.
-  - **Strengths:** Effective for managing a variety of data types and gradually improving performance through boosting.
-  - **Considerations:** Similar to RF, requires careful tuning and more computational resources.
-
-- **Neural Network (NNet):**
-  - **Performance:** Performs well, marginally outperforming in resampling and testing metrics, making it a viable alternative if ensemble approaches are not preferred.
-  - **Strengths:** Ideal for capturing complex patterns in large datasets.
-  - **Considerations:** Demands significant computational resources and careful tuning to avoid overfitting.
-
-- **Support Vector Machine (SVM):**
-  - **Performance:** Performs well but slightly behind NNet in terms of metrics.
-  - **Strengths:** Effective for determining the ideal boundary between outputs; best suited for boundary decisions.
-  - **Considerations:** Easier to interpret compared to ensemble and neural network models.
-
-- **Multivariate Adaptive Regression Splines (MARS):**
-  - **Performance:** Beneficial for capturing nonlinear interactions but falls behind other models in performance metrics.
-  - **Strengths:** Flexible non-parametric technique capable of modeling nonlinearities and interactions.
-  - **Considerations:** Easier to interpret but less accurate compared to other models.
-
-**Final Recommendation:**
-- **Chosen Model:** Random Forest is recommended for deployment due to its superior performance in all key metrics.
+**Final Recommendation:** - **Chosen Model:** Random Forest is recommended for deployment due to its superior performance in all key metrics.
 - **Next Steps:** Include rigorous validation to confirm the RF model's stability, investigate feature engineering based on RF variable importance, and explore potential ensemble methods to combine strengths from multiple models for improved prediction accuracy.
-
-
 
 ```{r compare_models}
 #Create empty df
@@ -1172,7 +1126,6 @@ kable(results, "html", escape = FALSE, align = c('l', rep('c', 6)), col.names = 
                    bold = TRUE, background = "#D3D3D3", color = "black")
 ```
 
-
 Save results to excel file
 
 ```{r}
@@ -1192,48 +1145,52 @@ write_xlsx(eval_revised_pred, "eval_revised_pred.xlsx")
 write_xlsx(eval_results, "ph_predictions.xlsx")
 ```
 
-
 # 5. Conclusion
 
-The ten highest variables of importance in our random forest model provide a valuable starting point for optimization, with a particular focus on minimizing the mnf_flow variable, which carries the highest explained variance in the model. According to the correlation plot, mnf_flow is also likely negatively correlated with pH. Keeping this in mind will be crucial for increasing efficiency in the manufacturing process. By addressing and optimizing these key variables, we can significantly enhance production quality and consistency.
+The ten highest variables of importance in our random forest model provide a valuable starting point for optimization, with a particular focus on minimizing the mnf_flow variable, which carries the highest explained variance in the model.
+According to the correlation plot, mnf_flow is also likely negatively correlated with pH. Keeping this in mind will be crucial for increasing efficiency in the manufacturing process.
+By addressing and optimizing these key variables, we can significantly enhance production quality and consistency.
 
-The predictive modeling project offers significant benefits, including improved regulatory compliance by accurately predicting pH levels, ensuring that products meet industry standards. Enhanced production efficiency is achieved through better control of manufacturing processes, reducing variability and waste. The insights gained from the model can lead to more consistent product quality, optimized resource usage, and informed decision-making.
+The predictive modeling project offers significant benefits, including improved regulatory compliance by accurately predicting pH levels, ensuring that products meet industry standards.
+Enhanced production efficiency is achieved through better control of manufacturing processes, reducing variability and waste.
+The insights gained from the model can lead to more consistent product quality, optimized resource usage, and informed decision-making.
 
-We encourage stakeholders to consider the recommendations provided and support further steps to integrate analytics into production practices. By adopting these predictive models, ABC Beverage can enhance its operational efficiency, maintain high-quality standards, and stay ahead of regulatory requirements. Your support in this initiative will be crucial for driving continuous improvement and innovation in our production processes.
-
+We encourage stakeholders to consider the recommendations provided and support further steps to integrate analytics into production practices.
+By adopting these predictive models, ABC Beverage can enhance its operational efficiency, maintain high-quality standards, and stay ahead of regulatory requirements.
+Your support in this initiative will be crucial for driving continuous improvement and innovation in our production processes.
 
 # References
 
+Structure of the Non-Technical Report
 
-Structure of the Non-Technical Report  
+Executive Summary\
+Objective: Briefly describe the purpose of the analysis, which is to understand and predict pH levels in the manufacturing process as per new regulations.\
+Key Findings: Summarize the main outcomes, such as the most important factors affecting pH and the performance of the predictive model.
 
-Executive Summary  
-Objective: Briefly describe the purpose of the analysis, which is to understand and predict pH levels in the manufacturing process as per new regulations.  
-Key Findings: Summarize the main outcomes, such as the most important factors affecting pH and the performance of the predictive model.  
+Introduction\
+Background: Provide context about why pH is a critical quality metric in beverage production and the impact of regulatory requirements.\
+Project Scope: Outline what the project covers, including data sources, main analytical goals, and the expected impact on the production process.
 
-Introduction  
-Background: Provide context about why pH is a critical quality metric in beverage production and the impact of regulatory requirements.  
-Project Scope: Outline what the project covers, including data sources, main analytical goals, and the expected impact on the production process.  
+Data Overview\
+Data Sources: Describe where the data comes from and what it represents (production parameters, quality measures, etc.).\
+Data Quality: Highlight the cleanliness of the data, any challenges with missing values or outliers, and how these were addressed.
 
-Data Overview  
-Data Sources: Describe where the data comes from and what it represents (production parameters, quality measures, etc.).  
-Data Quality: Highlight the cleanliness of the data, any challenges with missing values or outliers, and how these were addressed.  
+Insights from Data Exploration\
+Descriptive Statistics: Discuss general trends observed in the data, such as typical pH levels and variability across different brand codes.\
+Visuals and Interpretations: Use simple graphs like bar charts or line graphs to show important trends and patterns that inform about the pH level.
+For instance, show how pH varies by different manufacturing parameters without getting into statistical jargon.
 
-Insights from Data Exploration  
-Descriptive Statistics: Discuss general trends observed in the data, such as typical pH levels and variability across different brand codes.  
-Visuals and Interpretations: Use simple graphs like bar charts or line graphs to show important trends and patterns that inform about the pH level. For instance, show how pH varies by different manufacturing parameters without getting into statistical jargon.  
+Predictive Modeling\
+Approach: Explain that various models were tested to find the best way to predict pH levels, focusing on the usefulness of the models in making predictions that help comply with regulations.\
+Model Selection: Discuss why the chosen model (e.g., Random Forest) was suitable, focusing on its ability to provide accurate and reliable predictions rather than the technical details.
 
-Predictive Modeling  
-Approach: Explain that various models were tested to find the best way to predict pH levels, focusing on the usefulness of the models in making predictions that help comply with regulations.  
-Model Selection: Discuss why the chosen model (e.g., Random Forest) was suitable, focusing on its ability to provide accurate and reliable predictions rather than the technical details.  
+Implications and Recommendations\
+Operational Impact: Discuss how the model can be used in daily operations to ensure compliance and optimize production processes.\
+Future Steps: Suggest how the analysis could be extended or improved, such as collecting more data over time or integrating real-time data analytics into the production line.
 
-Implications and Recommendations  
-Operational Impact: Discuss how the model can be used in daily operations to ensure compliance and optimize production processes.  
-Future Steps: Suggest how the analysis could be extended or improved, such as collecting more data over time or integrating real-time data analytics into the production line.  
-
-Conclusion  
-Summary of Benefits: Reiterate the benefits of the predictive modeling project, emphasizing improved regulatory compliance and enhanced production efficiency.  
-Call to Action: Encourage stakeholders to consider the recommendations and support further steps to integrate analytics into production practices. 
+Conclusion\
+Summary of Benefits: Reiterate the benefits of the predictive modeling project, emphasizing improved regulatory compliance and enhanced production efficiency.\
+Call to Action: Encourage stakeholders to consider the recommendations and support further steps to integrate analytics into production practices.
 
 # Appendix: R Code
 
