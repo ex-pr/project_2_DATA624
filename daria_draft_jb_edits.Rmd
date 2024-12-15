@@ -75,9 +75,13 @@ library(writexl)
 
 Objective: The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
 
-We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. Following the discovery of missingness,the group moved to further evaluate the data through thorough exploratory data analysis.
+We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. Following the discovery of missingness,the group moved to further evaluate the data through thorough exploratory data analysis. Within the EDA we confirmed that the dataset contained missing values, skewness, and outliers, with key variables like Brand Code and MFR requiring special attention in the working steps prior to modeling.
 
-Key Findings: Summarize the main outcomes, such as the most important factors affecting pH and the performance of the predictive model.  
+After cleaning the data we shifted our attention to building models and evaluating performance. The group ended on five handpicked models to evaluate. Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS were chosen. We thought that these models would cover a range of techniques instead of focusing on one area of predictive modeling. Lastly we settled on one singular model that was more performant that any of the others.
+
+
+Key Findings: Due to the high performance relative to the other four models the group chose that random forest was the best fit. While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most. Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production. The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this models accuracy and reliability in predicting pH levels.
+
 
 # Introduction
 
@@ -260,33 +264,33 @@ DT::datatable(
 
 ## 1.3 EDA 
 
-Carb Volume: Volume of the beverage that is carbonated.  
-Fill Ounces: Volume of the beverage filled into containers, measured in ounces.  
-PC Volume: Could indicate "Process Control Volume," a measure related to production parameters.  
-Carb Pressure: Pressure used during the carbonation process.  
-Carb Temp: Temperature of the beverage during carbonation.  
-PSC: Potentially a quality control metric, the exact meaning would depend on industry context.  
-PSC Fill: Quality or quantity metric related to the filling process.  
-PSC CO2: Measures CO2 levels or pressure during processing.  
-Mnf Flow: Manufacturing flow rate, likely related to how fast the production line operates.  
-Carb Pressure1: Another measurement of pressure during carbonation, possibly at a different production stage.  
-Fill Pressure: Pressure maintained during the filling of beverages into containers.  
-Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4: Different points of hydraulic pressure measurement within the machinery.  
-Filler Level: Level to which containers are filled; critical for consistency.  
-Filler Speed: Speed at which the filling machinery operates.  
-Temperature: General temperature measurement.  
-Carb Flow: Flow rate of the carbonation process.  
-Density: Physical density of the beverage, which impacts taste and mouthfeel.  
-MFR: Manufacturer’s reference; could relate to specific production settings or machine identifiers.  
-Balling: Measurement related to the sugar content of a liquid, typically used in brewing.    
-Pressure Vacuum: Pressure readings from a vacuum process, possibly in packaging.  
-Oxygen Filler: Likely measures the presence of oxygen during filling, which must be minimized in certain beverages.  
-Bowl Setpoint: Setpoint for a particular part of the machinery, possibly related to mixing or blending.  
-Pressure Setpoint: Target pressure to be maintained within certain machinery or process stages.  
-Air Pressurer: Air pressure readings.  
-Alch Rel: Could be "Alcohol Release" or related to the alcohol content management.  
-Carb Rel: Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.  
-Balling Lvl: Specific gravity of the liquid related to its sugar content, important in quality control in brewing and beverage manufacturing.  
+**Carb Volume:** Volume of the beverage that is carbonated.  
+**Fill Ounces:** Volume of the beverage filled into containers, measured in ounces.  
+**PC Volume:** Could indicate "Process Control Volume," a measure related to production parameters.  
+**Carb Pressure:** Pressure used during the carbonation process.  
+**Carb Temp:** Temperature of the beverage during carbonation.  
+**PSC:** Potentially a quality control metric, the exact meaning would depend on industry context.  
+**PSC Fill:** Quality or quantity metric related to the filling process.  
+**PSC CO2:** Measures CO2 levels or pressure during processing.  
+**Mnf Flow:** Manufacturing flow rate, likely related to how fast the production line operates.  
+**Carb Pressure1:** Another measurement of pressure during carbonation, possibly at a different production stage.  
+**Fill Pressure:** Pressure maintained during the filling of beverages into containers.  
+**Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4:** Different points of hydraulic pressure measurement within the machinery.  
+**Filler Level:** Level to which containers are filled; critical for consistency.  
+**Filler Speed:** Speed at which the filling machinery operates.  
+**Temperature:** General temperature measurement.  
+**Carb Flow:** Flow rate of the carbonation process.  
+**Density:** Physical density of the beverage, which impacts taste and mouth feel.  
+**MFR:** Manufacturer’s reference; could relate to specific production settings or machine identifiers.  
+**Balling:** Measurement related to the sugar content of a liquid, typically used in brewing.    
+**Pressure Vacuum:** Pressure readings from a vacuum process, possibly in packaging.  
+**Oxygen Filler:** Likely measures the presence of oxygen during filling, which must be minimized in certain beverages.  
+**Bowl Setpoint:** Setpoint for a particular part of the machinery, possibly related to mixing or blending.  
+**Pressure Setpoint:** Target pressure to be maintained within certain machinery or process stages.  
+**Air Pressurer:** Air pressure readings.  
+**Alch Rel:** Could be "Alcohol Release" or related to the alcohol content management.  
+**Carb Rel:** Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.  
+**Balling Lvl:** Specific gravity of the liquid related to its sugar content, important in quality control in brewing and beverage manufacturing.
 
 The pH of a solution is measured on a range of 0 to 14, indicating its acidity or alkalinity. The pH level in beverage manufacturing is crucial for flavor, safety, shelf life, and uniformity.
 
@@ -1000,7 +1004,7 @@ plot(importance_gbm, top = 10, main = "Top 10 predictors, GBM")
 
 **Random Forest**
 
- Random Forest models, like GBM, are tree-based and do not require data scaling. The data, however, is scaled and centered to ensure that the preparation methods are consistent across all models used in the research.
+Random Forest models, like GBM, are tree-based and do not require data scaling. The data, however, is scaled and centered to ensure that the preparation methods are consistent across all models used in the research.
 
 During training, Random Forest generates numerous decision trees and outputs the mode of the classes (classification) or mean prediction (regression) of each tree. It is particularly effective for classification and regression, and its ensemble method allows it to handle overfitting very well.
 
@@ -1065,7 +1069,7 @@ plot(importance_rf, top = 10, main = "Top 10 predictors, Random Forest")
 ```
 
 ```{r}
-#Stop parallel once youre done with models
+#Stop parallel once you're done with models
 stopCluster(cl)
 ```
 
