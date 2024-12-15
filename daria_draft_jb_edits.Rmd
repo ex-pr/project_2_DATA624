@@ -71,23 +71,24 @@ library(writexl)
   <img src="https://raw.githubusercontent.com/ex-pr/project_2_DATA624/refs/heads/main/logo_abc.png">
 </p>
 
-#Overview
+# Overview & Introduction
 
-Objective: The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
+**Objective:**
 
+The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
+
+**Introduction:**
 We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. Following the discovery of missingness,the group moved to further evaluate the data through thorough exploratory data analysis. Within the EDA we confirmed that the dataset contained missing values, skewness, and outliers, with key variables like Brand Code and MFR requiring special attention in the working steps prior to modeling.
 
 After cleaning the data we shifted our attention to building models and evaluating performance. The group ended on five handpicked models to evaluate. Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS were chosen. We thought that these models would cover a range of techniques instead of focusing on one area of predictive modeling. Lastly we settled on one singular model that was more performant that any of the others.
 
 
-Key Findings: Due to the high performance relative to the other four models the group chose that random forest was the best fit. While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most. Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production. The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this models accuracy and reliability in predicting pH levels.
+**Key Findings:**
+Due to the high performance relative to the other four models the group chose that random forest was the best fit. While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most. Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production. The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this models accuracy and reliability in predicting pH levels.
 
 
-# Introduction
-
-Background: Provide context about why pH is a critical quality metric in beverage production and the impact of regulatory requirements.  
-Project Scope: Outline what the project covers, including data sources, main analytical goals, and the expected impact on the production process.  
-
+**Background:** 
+pH is a critical quality metric in beverage production because it directly affects the flavor, safety, shelf life, and consistency of the product. Maintaining the correct pH level ensures that the beverage is resistant to microbial growth and chemical deterioration, which is essential for consumer safety and product stability. Regulatory requirements mandate that beverage manufacturers closely monitor and control pH levels to meet industry standards and ensure product quality. Non-compliance with these regulations can lead to product recalls, legal issues, and damage to the company's reputation. The FDA has a slew of resources and best practices about this.
 
 # 1. Data Exploration
 
