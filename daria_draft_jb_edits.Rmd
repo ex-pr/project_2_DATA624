@@ -471,27 +471,42 @@ corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.
 
 # 2. Data Preparation
 
+### Identification of problem areas
 
-Standardizing column names (make_clean_names()) helps to eliminate problems caused by case sensitivity or spaces in column names, making data manipulation easier and less error-prone.
+- **Standardizing Column Names:**
+  - Using `make_clean_names()` to eliminate issues caused by case sensitivity or spaces, making data manipulation easier and less error-prone.
 
-Identify and remove zero variance predictors (Hyd Pressure 1), which have the same value across all observations and do not help the model differentiate between them. Identifying (nearZeroVar()) and deleting these variables simplifies the modeling process, boosting computing efficiency and potentially increasing model performance by concentrating on more informative features.
+- **Zero Variance Predictors:**
+  - Identifying and removing zero variance predictors (e.g., Hyd Pressure1) to simplify the modeling process, boost computational efficiency, and potentially increase model performance.
 
-The K-Nearest Neighbors imputation method takes advantage of the similarity between observations, filling in missing values using the average (or median) of the 'k' most similar occurrences.Advantages versus MICE: While it can produce comprehensive results via numerous imputations, it is computationally demanding and may bring more variability into the dataset. KNN imputation is simpler and faster than other methods, making it ideal for big datasets with simple relationships.   
-Random Forest Imputation of Categorical Variables: It anticipates missing categories by learning decision rules inferred from other factors in the data, allowing for more accurate approximation of missing values. Unlike simpler methods such as mode imputation, which just fills in the most frequent category without taking into account the context provided by other features, this method captures non-linear correlations between features.
+- **Missing Value Imputation:**
+  - **K-Nearest Neighbors (KNN):** Fills in missing values using the average (or median) of the 'k' most similar occurrences. Ideal for large datasets with simple relationships.
+  - **Random Forest Imputation:** Captures non-linear correlations by learning decision rules from other features, providing more accurate approximations than simpler methods like mode imputation.
 
-The precise handling of Mnf Flow values, which may be considered as placeholders or outliers, demonstrates a data-specific expertise. If '-100' is not a valid manufacturing data point (for example, representing sensor malfunctions or data input errors), marking it as missing helps to avoid biasing the model. KNN imputation was performed after changing these placeholder values to NA to ensure that the replacement values reflect typical operational data and preserve consistency in the manufacturing flow analysis.  
+- **Handling Mnf Flow Values:**
+  - If '-100' is not a valid data point, mark it as missing and use KNN imputation to ensure replacement values reflect typical operational data, preserving consistency in the manufacturing flow analysis.
 
-Decision to not adjust outliers initially: Outliers in predictive modeling for manufacturing data can signify genuine fluctuations in the process or crucial anomalies to record. Automatically reducing or changing them without a comprehensive study may result in the loss of important information about the system's behavior under unusual conditions. Depending on the model's final application, recognizing and responding to uncommon conditions may be more beneficial than having a model that can perfectly anticipate regular conditions.
+- **Outliers:**
+  - Initially not adjusted to retain important information about the system's behavior under unusual conditions, which can be crucial for predictive modeling.
 
-One-Hot Encoding: Categorical variables, such as Brand Code, are turned into numerous binary variables, with each signifying the presence (1) or absence (0) of that category. This is critical for models that demand numerical input but do not naturally handle categorical data (such as SVMs and Neural Networks). This encoding broadens the feature space while making the model more adaptable in learning patterns unique to each category.
+- **One-Hot Encoding:**
+  - Converts categorical variables, such as Brand Code, into binary variables, making the model more adaptable in learning patterns unique to each category.
 
-Interaction terms (such as pc_volume_pressure, which combines pc_volume and carb_pressure) are used to simulate the effects of interactions between two or more variables on pH levels. This is based on domain knowledge, which implies that the combination of these elements may have a non-additive effect on the outcome. Polynomial characteristics (such carb_volume2) enable the model to incorporate non-linear interactions, resulting in a more flexible border in regression models. Binning continuous variables (such as carb_temp_binned) can aid in the robust management of non-linear effects and improve model performance by transforming a continuous variable into a categorical variable that may be easier to model.
+- **Interaction Terms and Polynomial Features:**
+  - **Interaction Terms:** Simulate the effects of interactions between variables on pH levels (e.g., pc_volume_pressure).
+  - **Polynomial Features:** Capture non-linear interactions (e.g., carb_volume2).
 
-Log and square root transformations were used on various variables, including filler_speed and air_pressurer, to standardize their distributions and reduce skewness.
-Transformations are used to reduce variance and make data more normally distributed, which can improve the effectiveness of many statistical learning approaches that rely on normally distributed data.
+- **Binning Continuous Variables:**
+  - Helps manage non-linear effects and improve model performance by transforming continuous variables into categorical ones (e.g., carb_temp_binned).
+
+- **Transformations:**
+  - **Log and Square Root Transformations:** Applied to variables like filler_speed and air_pressurer to standardize their distributions and reduce skewness.
+  - Transformations help reduce variance and make data more normally distributed, enhancing the effectiveness of many statistical learning approaches that rely on normally distributed data.
 
 
 ## 2.1 Missing values
+
+- Cleaning up the naming conventions in both the evaluation dataframe and out original dataset.
 
 ```{r colnames_zeroVar}
 #Fix column names
@@ -509,9 +524,8 @@ beverage_df <- beverage_df[, !zero_var$nzv]
 eval_df <- eval_df[, !zero_var$nzv]
 ```
 
-**Imputing missing values** knn for numeric vars ?
-
-For Brand Code random forest imputation, for the rest - knn.
+**Imputing missing values**
+knnImputation was used for for numeric variables and Random Forest was used for Brand Code and mnf_flow.
 
 ```{r impute_numeric}
 set.seed(547)
@@ -661,7 +675,19 @@ eval_transformed$oxygen_filler <- log(eval_transformed$oxygen_filler + 1)
 eval_transformed$psc_co2 <- log(eval_transformed$psc_co2 + 1)
 ```
 
-COMPARE THE TRANSFORMED DATA AND ORIGINA TO MAKE SURE THAT OUR TRANSFORMATIONS ARE OK
+#### Comparing newly formed and transformed variables
+
+The team created six new transformation for six original variables in the dataset to try an improve performance. The changes were seen across both the original dataset and the eval dataset.
+
+**Transformed Variables and the transformations applied:**
+* filler_speed - (log)
+* mfr - (log)
+* temperature (sqrt)
+* air_pressure (sqrt)
+* oxygen_filter (shifted log)
+* psc_co2 (shifted log)
+
+Tables 7 and 8 were created to visualize this change in both new transformed df's.
 
 ```{r}
 #Summary statistics
