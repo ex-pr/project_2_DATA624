@@ -73,21 +73,21 @@ library(writexl)
 
 # Overview & Introduction
 
-**Objective:**
+## **Objective:**
 
 The purpose of this analysis is to understand the beverage manufacturing process at the ABC Beverage company. This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.
 
-**Introduction:**
+## **Introduction:**
 We began this analysis by looking into which variable would present issues for the model. There was a glaring problem with the state of the original beverage data. Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively. Following the discovery of missingness,the group moved to further evaluate the data through thorough exploratory data analysis. Within the EDA we confirmed that the dataset contained missing values, skewness, and outliers, with key variables like Brand Code and MFR requiring special attention in the working steps prior to modeling.
 
 After cleaning the data we shifted our attention to building models and evaluating performance. The group ended on five handpicked models to evaluate. Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS were chosen. We thought that these models would cover a range of techniques instead of focusing on one area of predictive modeling. Lastly we settled on one singular model that was more performant that any of the others.
 
 
-**Key Findings:**
+## **Key Findings:**
 Due to the high performance relative to the other four models the group chose that random forest was the best fit. While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most. Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production. The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this models accuracy and reliability in predicting pH levels.
 
 
-**Background:** 
+## **Background:** 
 pH is a critical quality metric in beverage production because it directly affects the flavor, safety, shelf life, and consistency of the product. Maintaining the correct pH level ensures that the beverage is resistant to microbial growth and chemical deterioration, which is essential for consumer safety and product stability. Regulatory requirements mandate that beverage manufacturers closely monitor and control pH levels to meet industry standards and ensure product quality. Non-compliance with these regulations can lead to product recalls, legal issues, and damage to the company's reputation. The FDA has a slew of resources and best practices about this.
 
 # 1. Data Exploration
@@ -265,6 +265,8 @@ DT::datatable(
 
 ## 1.3 EDA 
 
+### Featured Variables:
+
 **Carb Volume:** Volume of the beverage that is carbonated.  
 **Fill Ounces:** Volume of the beverage filled into containers, measured in ounces.  
 **PC Volume:** Could indicate "Process Control Volume," a measure related to production parameters.  
@@ -293,20 +295,19 @@ DT::datatable(
 **Carb Rel:** Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.  
 **Balling Lvl:** Specific gravity of the liquid related to its sugar content, important in quality control in brewing and beverage manufacturing.
 
-The pH of a solution is measured on a range of 0 to 14, indicating its acidity or alkalinity. The pH level in beverage manufacturing is crucial for flavor, safety, shelf life, and uniformity.
+### EDA Takeaways:
 
-The most common pH in the dataset is around 8.5, indicating that this is the desired pH for many batches of beverages. For carbonated beverages, this slightly alkaline pH might:  
-Improve Taste: Balance the tang of carbonation with a smoother, less acidic flavor.  
-Aid in Shelf Stability: Make sure the beverage is resistant to microbial growth and chemical deterioration.  
-Reflect Process Consistency: pH variations may reflect differences in raw material quality, carbonation levels, or filling precision.  
+The pH of a solution is measured on a scale from 0 to 14, indicating its acidity or alkalinity. In beverage manufacturing, maintaining the correct pH level is crucial for ensuring flavor, safety, shelf life, and uniformity.
 
-The distribution of PH is roughly normal (slight negative skew), centered around 8.5, with some outliers at the lower and upper tails. 
+The data shows that the most common pH level is around 8.5, which appears to be the target for many batches of beverages. For carbonated beverages, a slightly alkaline pH level can:
+- **Improve Taste:** Balance the tang of carbonation with a smoother, less acidic flavor.
+- **Aid in Shelf Stability:** Ensure the beverage is resistant to microbial growth and chemical deterioration.
+- **Reflect Process Consistency:** Indicate consistent raw material quality, carbonation levels, and filling precision.
 
-Brand B has significantly more entries compared to others. Balancing or stratified sampling during model training? 
+The distribution of pH is roughly normal with a slight negative skew, centered around 8.5, and includes some outliers at both the lower and upper tails.
 
-PH distribution across Brand Codes:  
-Brand C has the lowest median PH, while Brand B has the highest.  
-Outliers are present in all brand codes. Investigate whether these outliers are measurement errors or valid extreme cases.
+Brand B has significantly more entries compared to other brands, suggesting the need for balancing or stratified sampling during model training. The pH distribution varies across Brand Codes, with Brand C having the lowest median pH and Brand B the highest. Outliers are present in all brand codes, and it is important to investigate whether these outliers are due to measurement errors or valid extreme cases.
+
 
 ```{r ph_plots}
 #Distribution PH plot
@@ -331,21 +332,25 @@ ggplot(filtered_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
   labs(title = "Boxplot of PH by Brand Code", x = "Brand Code", y = "PH")
 ```
 
+### EDA - Distributions:
 
-MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint have outliers.  
-Alch Rel, Balling, Balling Lvl have bimonial distribution, maybe binning will be needed.  
-Mnf Flow has a long-tailed distribution.  
-Filler Speed, Hyd Pressure2, and Usage Cont have sharp peaks.  
-Hyd Pressure4 has an interesting spread, insight into process variability.  
-MFR and Oxygen Filler are heavily right-skewed.  
-Log or Box-Cox transformation for variables like MFR and Usage Cont to normalize.  
+Several variables in the dataset exhibit notable characteristics and potential issues:
 
-Mnf Flow: 
-A value of -100 for a large proportion of rows. MAYBE:  
-Missing Data: A common placeholder value.  
-Domain-Specific Encoding: For example, "no flow" or a specific state in manufacturing.  
-Data Error: A mistake in data collection or recording.  
-Confirm if -100 is a legitimate value or a placeholder. If it is a placeholder, it should be treated as missing and imputed or removed.  
+- **Outliers:** MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint contain outliers that may need to be addressed.
+- **Bimodal Distribution:** Variables such as Alch Rel, Balling, and Balling Lvl show bimodal distributions, suggesting that binning might be necessary.
+- **Long-Tailed Distribution:** Mnf Flow has a long-tailed distribution, which could affect model performance.
+- **Sharp Peaks:** Filler Speed, Hyd Pressure2, and Usage Cont exhibit sharp peaks in their distributions.
+- **Spread and Skewness:** Hyd Pressure4 shows an interesting spread, providing insights into process variability. MFR and Oxygen Filler are heavily right-skewed, indicating the need for normalization.
+
+For variables like MFR and Usage Cont, applying log or Box-Cox transformations can help normalize their distributions.
+
+**Mnf Flow:**
+- A value of -100 appears frequently, which could indicate:
+  - **Missing Data:** A common placeholder value.
+  - **Domain-Specific Encoding:** For example, representing "no flow" or a specific state in manufacturing.
+  - **Data Error:** A mistake in data collection or recording.
+- It is essential to confirm whether -100 is a legitimate value or a placeholder. If it is a placeholder, it should be treated as missing and imputed or removed to ensure data integrity.
+
 
 ```{r group_plots}
 group_1 <- c("Carb Pressure", "Carb Pressure1", "Carb Temp", "Temperature", 
@@ -390,11 +395,13 @@ beverage_df %>%
   labs(title = "Distribution of Variables: Group 3")
 ```
 
-MFR highest percentage of missing values, around 7%. It is either a challenging variable to collect or might not be consistently relevant across all rows.  
-mean, median, or a model-based imputation if MFR is critical.
-If it does not strongly correlate with the target or other features, drop?  
-When <3% missingness (PSC CO2, PC Volume, etc.), simple imputation techniques.  
-For Brand Code, mode imputation.
+### Initial Missingness:
+
+The dataset contains varying levels of missing values across different variables:
+
+- **MFR:** This variable has the highest percentage of missing values at around 7%. It may be challenging to collect consistently or might not be relevant across all rows. If MFR is critical, consider using mean, median, or model-based imputation. If it does not strongly correlate with the target variable or other features, it might be best to drop it.
+- **Variables with <3% Missingness:** For variables like PSC CO2 and PC Volume, which have less than 3% missing values, simple imputation techniques can be applied.
+- **Brand Code:** Mode imputation is recommended for handling missing values in the Brand Code variable.
 
 ```{r na_scatterplt_ph_vs_features}
 #NA
@@ -419,33 +426,20 @@ for (var in numeric_vars) {
 
 ## 1.4 Correlation Matrix
 
+### Preliminary Findings:
 
-Density, Balling, and Carb Rel show strong intercorrelations among themselves. Multicollinearity issues in linear regression models. 
+The data revealed several important correlations and potential multicollinearity issue. We used this correlation matrix to try and begin to understand the interworkings of the production process. Below is a write-up of these initial findings.
 
-Mnf Flow and Usage Cont have strong negative correlations, maybe additional preprocessing or transformation.
+- **Intercorrelations:** Density, Balling, and Carb Rel show strong intercorrelations, which could lead to multicollinearity issues in linear regression models.
+- **Negative Correlations:** Mnf Flow and Usage Cont have strong negative correlations, suggesting the need for additional preprocessing or transformation before moving to model selection.
+- **Interaction Terms:** Exploring interaction terms between variables like Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could provide further insights into their relationships with pH.
 
-Interaction terms between Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could also be explored, given their individual relationships with pH.
-
-
-Bowl Setpoint (correlation: 0.36).  
-Role in Production: This parameter most likely affects the flow or intensity of ingredient mixing during the carbonation or flavoring stages.
-Impact on pH: A higher bowl setpoint may result in more uniform mixing, lowering pH variability. Operators should keep a tight eye on this to avoid overmixing, which could result in deviations.  
-
-Filler Level (correlation: 0.35).  
-Role in Production: Ensures that containers are properly filled to prevent extra air or gas imbalances.
-Impact on pH: Over- or under-filled containers may vary carbonation levels, influencing the final pH. Proper calibration reduces waste while preserving the beverage profile.
-
-Pressure Vacuum (correlation: 0.22).  
-Role in Production: Assists with gas exchange during filling.
-Variations in vacuum pressure may cause inconsistent carbonation, changing the pH away from the target. Monitoring this ensures the desired "bite" of carbonation.
-
-Oxygen Filler (correlation: 0.17).  
-Role in Production: Determines the amount of oxygen introduced during filling.
-Impact on pH: Higher oxygen levels may accelerate oxidation, reducing pH and compromising flavor stability. Maintaining a low oxygen level protects product quality.
-
-Mnf Flow (correlation: -0.45)  
-Role in Production: Describes the rate at which materials flow during production.
-Impact on pH: A higher flow rate may result in irregular mixing, reduced carbonation, and a shift in pH. Adjusting flow rates can aid operators in maintaining consistent product attributes.
+**Key Variable Correlations:**
+- **Bowl Setpoint (correlation: 0.36):** This parameter likely affects the flow or intensity of ingredient mixing during carbonation or flavoring stages. A higher bowl setpoint may result in more uniform mixing, reducing pH variability.
+- **Filler Level (correlation: 0.35):** Ensures containers are properly filled to prevent extra air or gas imbalances. Variations in filler level can influence carbonation levels and pH, so proper calibration is essential.
+- **Pressure Vacuum (correlation: 0.22):** Assists with gas exchange during filling. Variations in vacuum pressure can cause inconsistent carbonation, affecting pH. Monitoring this parameter ensures the desired carbonation "bite."
+- **Oxygen Filler (correlation: 0.17):** Determines the amount of oxygen introduced during filling. Higher oxygen levels can accelerate oxidation, reducing pH and compromising flavor stability. Maintaining low oxygen levels is crucial for product quality.
+- **Mnf Flow (correlation: -0.45):** Describes the rate at which materials flow during production. A higher flow rate may result in irregular mixing, reduced carbonation, and a shift in pH. Adjusting flow rates helps maintain consistent product attributes.
 
 
 ```{r corr}
