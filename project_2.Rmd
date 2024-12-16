@@ -1,0 +1,2036 @@
+---
+title: "Project 2: Predicting pH for ABC Beverage"
+author: 'Banu Boopalan, Molly Siebecker, Marley Myrianthopoulos, Jonathan Burns, Daria Dubovskaia'
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    code_folding: hide
+editor_options:
+  chunk_output_type: console
+  markdown:
+    wrap: sentence
+---
+
+```{=html}
+<style>
+body {
+    text-align: justify; 
+}
+</style>
+```
+
+```{r setup, message=FALSE, warning=FALSE, include=FALSE}
+#chunks
+knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, echo=TRUE, fig.height=5, fig.align='center')
+
+#libraries
+library(tidyverse)
+library(DMwR)
+library(xgboost)
+library(vip)
+library(summarytools)
+library(fpp3)
+library(readxl)
+library(curl)
+library(latex2exp)
+library(seasonal)
+library(GGally)
+library(gridExtra)
+library(doParallel)
+library(reshape2)
+library(Hmisc)
+library(corrplot)
+library(e1071)
+library(caret)
+library(VIM)
+library(rpart)
+library(forecast)
+library(urca)
+library(earth)
+library(glmnet)
+library(cluster)
+library(kernlab)
+library(aTSA)
+library(AppliedPredictiveModeling)
+library(mlbench)
+library(randomForest)
+library(party)
+library(gbm)
+library(Cubist)
+library(partykit)
+library(kableExtra)
+library(factoextra)
+library(FactoMineR)
+library(naniar)
+library(mice)
+library(janitor)
+library(writexl)
+```
+
+<p align="center">
+
+<img src="https://raw.githubusercontent.com/ex-pr/project_2_DATA624/refs/heads/main/logo_abc.png"/>
+
+</p>
+
+# Overview & Introduction
+
+## Objective
+
+The purpose of this analysis is to understand the effect of different manufacturing parameters on pH levels at the ABC Beverage company.The analysis focuses on a broad range of variables thought to alter pH directly or indirectly.
+This is done by completing an expansive evaluation of pH levels, which consists of preliminary data analysis and scrupulous model selection for predicting pH levels in the manufacturing process.  
+
+## Introduction
+
+pH is a critical quality metric in beverage production because it directly affects the flavor, safety, shelf life, and consistency of the product.
+Maintaining the correct pH level ensures that the beverage is resistant to microbial growth and chemical deterioration, which is essential for consumer safety and product stability.
+Regulatory requirements mandate that beverage manufacturers closely monitor and control pH levels to meet industry standards and ensure product quality.
+Non-compliance with these regulations can lead to product recalls, legal issues, and damage to the company's reputation.
+The FDA has a slew of resources and best practices about this.
+This report tries to fill that gap by identifying key variables that have a substantial impact on pH levels and understanding the nature of these impacts, allowing for more accurate control methods.
+
+## Executive Summary
+
+We began this analysis by looking into which variable would present issues for the model.
+There was a glaring problem with the state of the original beverage data.
+Variables Brand Code and MFR were missing 4.5% and 8.2% of data respectively.
+Following the discovery of missingness, the group moved to further evaluate the data through thorough exploratory data analysis.
+Within the EDA we confirmed that the dataset contained missing values, skewness, and outliers, with key variables like Brand Code and MFR requiring special attention in the working steps prior to modeling.
+
+After cleaning the data, we shifted our attention to building models and evaluating performance.
+The group ended with five handpicked models to evaluate.
+Random Forest, Gradient Boosting, Neural Networks, Support Vector Machine, and MARS were chosen.
+We thought that these models would cover a range of techniques instead of focusing on one area of predictive modeling.
+Lastly, we settled on one singular model that was more performant than any of the others.
+
+The complete technical implementation of this project is available in our [GitHub Repository](https://github.com/ex-pr/project_2_DATA624). For stakeholders and non-technical audiences, a business-friendly version of the report is [available](https://docs.google.com/document/d/15J0yU6ineDFZPa6wa24jz2vVCfrouUCJJQUbvXj9MRo/edit?usp=sharing).
+
+## Key Findings
+
+Due to the high performance relative to the other four models the group chose that random forest was the best fit.
+While evaluating the top 10 predictors in our random forest model the mnf_flow variable stood out the most.
+Carrying near 45% of the importance in the model the mnf_flow is undoubtedly the most important variable, in consultation with the correlation matrix in the EDA section, we can deduce that mnf_flow is not only important but also negatively correlated with pH levels in beverage production.
+The model behind this discovery is a random forest model which boasts a Test R-Squared of 71.3%, a Test RMSE of 0.096 and a Test MAE of 0.069 which highlights this model's accuracy and reliability in predicting pH levels.
+
+
+# 1. Data Exploration
+
+## 1.1 Load data
+
+Data for training and evaluation are obtained from the [GitHub repo](https://github.com/ex-pr/project_2_DATA624) via URLs, ensuring that the most recent version is used for analysis.
+Temporary files are used as intermediate storage to speed up the data collecting process.
+
+```{r load_data}
+#Load train data
+#URL the raw .xlsx file
+url <- "https://raw.githubusercontent.com/ex-pr/project_2_DATA624/main/StudentData.xlsx"
+#Temporary path
+temp_file <- tempfile(fileext = ".xlsx")
+#Download file
+curl_download(url, temp_file)
+#Read file
+data_beverage <- read_excel(temp_file)
+#Copy data
+beverage_df <- data_beverage
+#Clean temp file
+unlink(temp_file)
+
+#Load test data
+#URL the raw .xlsx file
+url <- "https://raw.githubusercontent.com/ex-pr/project_2_DATA624/main/StudentEvaluation.xlsx"
+#Temporary path
+temp_file <- tempfile(fileext = ".xlsx")
+#Download file
+curl_download(url, temp_file)
+#Read file
+data_eval <- read_excel(temp_file)
+#Copy data
+eval_df <- data_eval
+```
+
+## 1.2 Summary Statistics
+
+Beverage dataset: 2571 rows x 33 columns.\
+Evaluation dataset: 267 rows x 33 columns.\
+Mostly numeric, with one categorical variable (Brand Code).
+
+-   NAs:\
+    Brand Code: \~4.7% missing in beverage_df, \~3.0% missing in eval_df.\
+    Many numeric features have a small percentage of missing values, generally \< 2%.\
+    PH: 4 NAs for Brand code B, the target variable in beverage_df.
+    eval_df has all values missing for PH (used for prediction).\
+    Impute missing values for numeric features using median or mean (or more advanced imputation if correlated features exist).
+    Missing values should be handled within a robust pipeline to avoid information loss.
+
+-   Skewness and outliers\
+    Variables like Mnf Flow have extreme values (mean is heavily influenced by outliers).
+    Range: -100.2 to 229.4.\
+    PH: Check for extreme pH values that may affect model accuracy.\
+    Hyd Pressure1--4: High standard deviations (e.g., Hyd Pressure2 with a mean of \~21 and SD of 16.4).\
+    Analyze the distribution of these variables using histograms or boxplots.
+    Maybe winsorization or BoxCox/log transformation for skewed distributions.
+
+-   Feature Importance for PH pred\
+    Carb Volume, Fill Ounces, PC Volume, Carb Pressure, and Carb Temp have small sd and are likely controlled manufacturing parameters.
+    These might directly influence pH.\
+    Brand Code can be treated as a categorical predictor for brand-specific variations.\
+    Correlation or feature importance to identify which variables most strongly influence PH.
+
+-   Brand Code: 4 levels (A, B, C, D).\
+    Unbalanced distribution: B accounts for \~50% of records, while A, C, and D are much smaller.
+    The imbalance might affect models like decision trees or ensemble methods.\
+    Apply stratified sampling or weighting to handle imbalance during training.
+    Explore interaction effects between Brand Code and numeric variables.
+
+-   Multicollinearity\
+    Variables such as Carb Volume, PC Volume, and Carb Pressure might be correlated due to their role in carbonation.\
+    Multiple pressure-related variables (Carb Pressure1, Fill Pressure, etc.) and filler speed/level metrics could also have collinear relationships.\
+    Compute a correlation matrix to detect highly correlated predictors.
+
+-   Data Leakage\
+    Variables like PSC, PSC Fill, and PSC CO could be downstream measures dependent on pH. Confirm whether these are part of the production process or outcome metrics.\
+    Analyze the production process to ensure no data leakage into the model.
+
+-   eval_df\
+    All PH values are missing for prediction.\
+    Structure and missingness are similar to beverage_df.
+    Ensure preprocessing and feature engineering pipelines are consistent between training and evaluation datasets.
+
+```{r summary_statistics}
+#Check first rows of data
+DT::datatable(
+      beverage_df[1:10,],
+      options = list(scrollX = TRUE,
+                     deferRender = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     info = FALSE,  
+                     paging=FALSE,
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 1: First 10 Rows of Beverage Data'
+  )) 
+
+DT::datatable(
+      eval_df[1:10,],
+      options = list(scrollX = TRUE,
+                     deferRender = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     info = FALSE,      
+                     paging=FALSE,
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 2: First 10 Rows of Evaluation Data'
+  )) 
+
+#Summary statistics
+DT::datatable(
+      dfSummary(beverage_df, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 3: Summary Statistics for Beverage Data'
+  )) 
+ 
+
+#Summary statistics
+DT::datatable(
+      dfSummary(eval_df, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 4: Summary Statistics for Evaluation Data'
+  )) 
+
+stat <- beverage_df %>%
+  group_by(`Brand Code`) %>%
+  filter(!is.na(`Brand Code`)) %>% 
+  dplyr::summarize(
+    Min = min(PH, na.rm = TRUE),
+    Q1 = quantile(PH, 0.25, na.rm = TRUE),
+    Median = median(PH, na.rm = TRUE),
+    Mean = mean(PH, na.rm = TRUE),
+    Q3 = quantile(PH, 0.75, na.rm = TRUE),
+    Max = max(PH, na.rm = TRUE),
+    StdDev = sd(PH, na.rm = TRUE),
+    Count = n(),
+    Missing = sum(is.na(PH)) 
+  )
+
+#Summary statistics by code
+DT::datatable(
+      stat,
+      options = list(dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE,
+                     paging=FALSE,
+                     info = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 5: Summary Statistics PH for Each Brand Code'
+  )) %>%
+  DT::formatRound(columns = c("Min", "Q1", "Median", "Mean", "Q3", "Max", "StdDev"), digits = 3)
+```
+
+## 1.3 EDA
+
+### 1.3.1 Featured Variables
+
+**Carb Volume:** Volume of the beverage that is carbonated.\
+**Fill Ounces:** Volume of the beverage filled into containers, measured in ounces.\
+**PC Volume:** Could indicate "Process Control Volume," a measure related to production parameters.\
+**Carb Pressure:** Pressure used during the carbonation process.\
+**Carb Temp:** Temperature of the beverage during carbonation.\
+**PSC:** Potentially a quality control metric, the exact meaning would depend on industry context.\
+**PSC Fill:** Quality or quantity metric related to the filling process.\
+**PSC CO2:** Measures CO2 levels or pressure during processing.\
+**Mnf Flow:** Manufacturing flow rate, likely related to how fast the production line operates.\
+**Carb Pressure1:** Another measurement of pressure during carbonation, possibly at a different production stage.\
+**Fill Pressure:** Pressure maintained during the filling of beverages into containers.\
+**Hyd Pressure1, Hyd Pressure2, Hyd Pressure3, Hyd Pressure4:** Different points of hydraulic pressure measurement within the machinery.\
+**Filler Level:** Level to which containers are filled; critical for consistency.\
+**Filler Speed:** Speed at which the filling machinery operates.\
+**Temperature:** General temperature measurement.\
+**Carb Flow:** Flow rate of the carbonation process.\
+**Density:** Physical density of the beverage, which impacts taste and mouth feel.\
+**MFR:** Manufacturer's reference; could relate to specific production settings or machine identifiers.\
+**Balling:** Measurement related to the sugar content of a liquid, typically used in brewing.\
+**Pressure Vacuum:** Pressure readings from a vacuum process, possibly in packaging.\
+**Oxygen Filler:** Likely measures the presence of oxygen during filling, which must be minimized in certain beverages.\
+**Bowl Setpoint:** Setpoint for a particular part of the machinery, possibly related to mixing or blending.\
+**Pressure Setpoint:** Target pressure to be maintained within certain machinery or process stages.\
+**Air Pressurer:** Air pressure readings.\
+**Alch Rel:** Could be "Alcohol Release" or related to the alcohol content management.\
+**Carb Rel:** Possibly "Carbonation Reliability" or a similar measure of carbonation consistency.\
+**Balling Lvl:** Specific gravity of the liquid related to its sugar content, important in quality control in brewing and beverage manufacturing.
+
+### 1.3.2 EDA Takeaways
+
+The pH of a solution is measured on a scale from 0 to 14, indicating its acidity or alkalinity.
+In beverage manufacturing, maintaining the correct pH level is crucial for ensuring flavor, safety, shelf life, and uniformity.
+
+The data shows that the most common pH level is around 8.5, which appears to be the target for many batches of beverages.
+For carbonated beverages, a slightly alkaline pH level can:
+
+-   **Improve Taste:** Balance the tang of carbonation with a smoother, less acidic flavor.  
+-   **Aid in Shelf Stability:** Ensure the beverage is resistant to microbial growth and chemical deterioration.  
+-   **Reflect Process Consistency:** Indicate consistent raw material quality, carbonation levels, and filling precision.  
+
+The distribution of pH is roughly normal with a slight negative skew, centered around 8.5, and includes some outliers at both the lower and upper tails.
+
+Brand B has significantly more entries compared to other brands, suggesting the need for balancing or stratified sampling during model training.
+The pH distribution varies across Brand Codes, with Brand C having the lowest median pH and Brand B the highest.
+Outliers are present in all brand codes, and it is important to investigate whether these outliers are due to measurement errors or valid extreme cases.
+
+```{r ph_plots}
+#Distribution PH plot
+ggplot(beverage_df, aes(x = PH)) +
+  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of PH", x = "PH", y = "Frequency")
+
+#Distribution Brand Code plot
+ggplot(beverage_df, aes(x = `Brand Code`)) +
+  geom_bar(fill = "lightgreen") +
+  theme_minimal() +
+  labs(title = "Count by Brand Code", x = "Brand Code", y = "Count")
+
+filtered_df <- beverage_df %>%
+  filter(!is.na(`Brand Code`))
+
+#Boxplot brand code vs ph
+ggplot(filtered_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Boxplot of PH by Brand Code", x = "Brand Code", y = "PH")
+```
+
+### 1.3.3 Distributions
+
+Several variables in the dataset exhibit notable characteristics and potential issues:
+
+-   **Outliers:** MFR, Fill Speed, Hyd Pressure3, and Pressure Setpoint contain outliers that may need to be addressed.
+-   **Bimodal Distribution:** Variables such as Alch Rel, Balling, and Balling Lvl show bimodal distributions, suggesting that binning might be necessary.
+-   **Long-Tailed Distribution:** Mnf Flow has a long-tailed distribution, which could affect model performance.
+-   **Sharp Peaks:** Filler Speed, Hyd Pressure2, and Usage Cont exhibit sharp peaks in their distributions.
+-   **Spread and Skewness:** Hyd Pressure4 shows an interesting spread, providing insights into process variability. MFR and Oxygen Filler are heavily right-skewed, indicating the need for normalization.
+
+For variables like MFR and Usage Cont, applying log or Box-Cox transformations can help normalize their distributions.  
+
+**Mnf Flow:** - A value of -100 appears frequently, which could indicate:  
+- **Missing Data:** A common placeholder value.  
+- **Domain-Specific Encoding:** For example, representing "no flow" or a specific state in manufacturing.  
+- **Data Error:** A mistake in data collection or recording.  
+- It is essential to confirm whether -100 is a legitimate value or a placeholder.  
+If it is a placeholder, it should be treated as missing and imputed or removed to ensure data integrity.  
+
+```{r group_plots}
+group_1 <- c("Carb Pressure", "Carb Pressure1", "Carb Temp", "Temperature", 
+             "Usage cont", "Fill Pressure", "Air Pressurer", "Alch Rel", 
+             "Balling", "Balling Lvl")
+
+group_2 <- c("Carb Volume", "Carb Rel", "Fill Ounces", "Oxygen Filler", "Density", 
+             "PC Volume", "PSC", "PSC CO2", 
+             "PSC Fill", "Pressure Setpoint", "Pressure Vacuum")
+
+group_3 <- c("Mnf Flow", "Carb Flow", "Filler Level", "Filler Speed", "Hyd Pressure1", 
+             "Hyd Pressure2", "Hyd Pressure3", "Hyd Pressure4", "MFR", "Bowl Setpoint")
+
+#Group 1 plot
+beverage_df %>%
+  select(all_of(group_1)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.3, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 1")
+
+#Group 2 Plot
+beverage_df %>%
+  select(all_of(group_2)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 2")
+
+#Group 3 Plot
+beverage_df %>%
+  select(all_of(group_3)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 1, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 3")
+```
+
+### 1.3.4 Missing Values, Variables vs PH
+
+The dataset contains varying levels of missing values across different variables:
+
+- **MFR:** This variable has the highest percentage of missing values at around 7%. It may be challenging to collect consistently or might not be relevant across all rows. If MFR is critical, consider using mean, median, or model-based imputation. If it does not strongly correlate with the target variable or other features, it might be best to drop it.
+- **Variables with \<3% Missingness:** For variables like PSC CO2 and PC Volume, which have less than 3% missing values, simple imputation techniques can be applied.
+- **Brand Code:** Mode imputation is recommended for handling missing values in the Brand Code variable.
+
+The scatter plots below show the relationship between pH levels and various manufacturing variables. These plots are critical for spotting patterns, detecting outliers, and determining the possible impact of each variable on pH stability.  
+
+**Air Pressurer/Balling/Balling/Alch Rel Lvl vs pH**: a dispersed pattern, there is no clear linear relationship with pH.  
+**Bowl Setpoint vs pH**: distinct clusters at specified setpoints, which may indicate set ranges utilized during production to regulate pH levels.  
+**Carb Flow vs pH**: a concentrated cluster, particularly at lower Carb Flow values, with little change in pH, indicating stability.  
+**Carb Pressure/Carb Pressure1/Carb Temp/Carb Volume vs pH**: no discernible trend, carb pressure may not be a reliable predictor of pH values.  
+**Carb Rel vs pH**: points are closely packed along the Carb Release scale, trend seems to go up indicating a potentially stable pH range.  
+**Density vs pH**: a dense cluster appears at lower density values with a steady pH, indicating potential stability or control in this range.  
+**Fill Ounces/Fill Pressure/Filler Level vs pH**: a wide range of points, no direct link variales and pH.  
+**Filler Speed vs pH**: a very broad range, especially at higher speeds, indicating complicated interactions with pH that are not linear.  
+**Hyd Pressure1/Hyd Pressure2/Hyd Pressure3/Hyd Pressure4  vs pH**: the points are widely scattered, little to no association with pH.
+**MFR vs pH**: broad fluctuation, with a grouping at higher MFR values, possibly indicating a more stable pH.  
+**Mnf Flow/Oxygen Filler vs pH**: The points are distributed, there may not be a strong relationship between manufacturing flow rates and pH. The points at -100 should be addressed.  
+
+**PC Volume vs pH**: a wide range of data points, pH variations when process control volume changes.  
+**Pressure Setpoint vs pH**: several horizontal lines of data points, indicating diverse setpoint values with variable pH sensitivities.  
+**Pressure Vacuum/PSC/PSC CO2/PSC Fill vs pH**: a succession of clusters, potentially representing defined levels during processing that correlate to stable pH ranges.    
+**Temperature vs pH**: Scattered throughout temperatures, no direct relationship with pH.  
+**Usage cont vs pH**: A wide range of data points indicate that usage control settings do not have a single effect on pH levels.  
+
+```{r na_scatterplt_ph_vs_features}
+#NA
+gg_miss_var(beverage_df, show_pct = TRUE)
+
+#Choose numeric vars
+numeric_vars <- beverage_df %>% 
+  select(where(is.numeric)) %>% 
+  names()
+
+# Choose numeric variables, remove PH
+numeric_vars <- beverage_df %>% 
+  select(where(is.numeric)) %>%
+  select(-PH) %>% 
+  names()
+
+#Pivot longer for faceting
+beverage_long <- beverage_df %>%
+  pivot_longer(cols = all_of(numeric_vars), names_to = "variable", values_to = "value")
+
+#All scatter plots faceted by variable
+ggplot(beverage_long, aes(x = PH, y = value)) +
+  geom_point(alpha = 0.6, color = "blue") +
+  facet_wrap(~ variable, scales = "free_y") +
+  theme_minimal() +
+  labs(y = "Value", x = "PH", title = "Relationship between Variables and PH")
+```
+
+## 1.4 Correlation Matrix
+
+The data revealed several important correlations and potential multicollinearity issue.
+We used this correlation matrix to try and begin to understand the interworkings of the production process.
+Below is a write-up of these initial findings.
+
+- **Intercorrelations:** Density, Balling, and Carb Rel show strong intercorrelations, which could lead to multicollinearity issues in linear regression models.
+- **Negative Correlations:** Mnf Flow and Usage Cont have strong negative correlations, suggesting the need for additional preprocessing or transformation before moving to model selection.
+- **Interaction Terms:** Exploring interaction terms between variables like Bowl Setpoint and Filler Level or between Pressure Vacuum and Carb Flow could provide further insights into their relationships with pH.
+
+**Key Variable Correlations:** 
+
+- **Bowl Setpoint (correlation: 0.36):** This parameter likely affects the flow or intensity of ingredient mixing during carbonation or flavoring stages.  
+A higher bowl setpoint may result in more uniform mixing, reducing pH variability.  
+- **Filler Level (correlation: 0.35):** Ensures containers are properly filled to prevent extra air or gas imbalances.  
+Variations in filler level can influence carbonation levels and pH, so proper calibration is essential.  
+- **Pressure Vacuum (correlation: 0.22):** Assists with gas exchange during filling.  
+Variations in vacuum pressure can cause inconsistent carbonation, affecting pH. Monitoring this parameter ensures the desired carbonation "bite."   
+- **Oxygen Filler (correlation: 0.17):** Determines the amount of oxygen introduced during filling.  
+Higher oxygen levels can accelerate oxidation, reducing pH and compromising flavor stability.  
+Maintaining low oxygen levels is crucial for product quality.  
+- **Mnf Flow (correlation: -0.45):** Describes the rate at which materials flow during production.  
+A higher flow rate may result in irregular mixing, reduced carbonation, and a shift in pH. Adjusting flow rates helps maintain consistent product attributes.  
+
+```{r corr}
+tst <- beverage_df %>% 
+  select(where(is.numeric))
+#Correlation with PH
+cor_table <- cor(drop_na(tst))[, "PH"] %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  rename(Coefficient = ".") %>%
+  arrange(desc(Coefficient))
+
+kable(cor_table, "html", escape = F, col.names = c('Variable', 'Coefficient')) %>%
+  kable_styling("striped", full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  add_header_above(c("Table 6: Correlation with PH" = 2))
+
+#Corr matrix
+rcore <- rcorr(as.matrix(tst))
+coeff <- rcore$r
+#Filter to include only |r| > 0.1, the rest are 0
+filtered_coeff <- coeff
+filtered_coeff[abs(filtered_coeff) < 0.1] <- 0 
+coeff <- rcore$r
+corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.col = "black",
+         type="upper", order="hclust", number.cex=0.45, diag=FALSE)
+```
+
+# 2. Data Preparation
+
+During this stage, we focused on refining the dataset to improve model performance, notably pH prediction in beverage production. The following are the detailed steps and approaches used (for both, training and evaluation datasets):
+
+- **Standardizing Column Names:**
+    - Using `make_clean_names()` to eliminate issues caused by case sensitivity or spaces, making data manipulation easier and less error-prone.
+- **Zero Variance Predictors:**
+    - Identifying and removing zero variance predictors (e.g., Hyd Pressure1) to simplify the modeling process, boost computational efficiency, and potentially increase model performance.
+- **Missing Value Imputation:**
+    - **K-Nearest Neighbors (KNN):** Fills in missing values using the average (or median) of the 'k' most similar occurrences. Ideal for large datasets with simple relationships.
+    - **Random Forest Imputation:** Captures non-linear correlations by learning decision rules from other features, providing more accurate approximations than simpler methods like mode imputation.
+- **Handling Mnf Flow Values:**
+    - If '-100' is not a valid data point, mark it as missing and use KNN imputation to ensure replacement values reflect typical operational data, preserving consistency in the manufacturing flow analysis.
+- **Outliers:**
+    - Initially not adjusted to retain important information about the system's behavior under unusual conditions, which can be crucial for predictive modeling.
+- **One-Hot Encoding:**
+    - Converts categorical variables, such as Brand Code, into binary variables, making the model more adaptable in learning patterns unique to each category.
+- **Interaction Terms and Polynomial Features:**
+    - **Interaction Terms:** Simulate the effects of interactions between variables on pH levels (pc_volume_pressure, setpoint_diff).
+    - **Polynomial Features:** Capture non-linear interactions (carb_volume2).
+- **Binning Continuous Variables:**
+    - Helps manage non-linear effects and improve model performance by transforming continuous variables into categorical ones (e.g., carb_temp_binned).
+- **Transformations:**
+    - **Log and Square Root Transformations:** Applied to variables like filler_speed and air_pressurer to standardize their distributions and reduce skewness.
+    - Transformations help reduce variance and make data more normally distributed, enhancing the effectiveness of many statistical learning approaches that rely on normally distributed data.
+    
+During the initial exploratory analysis, we looked for outliers in the data. Although several extreme values were recorded, the following factors influenced our decision not to address them explicitly in this analysis. The outliers in this dataset may be due to true fluctuations in pH levels during the beverage manufacturing process, not measurement errors. Removing or modifying these data items may distort key information.Ensemble models like Random Forest and Gradient Boosting Machines (GBM) are resilient to outliers due to their decision tree-based architecture. In a production scenario, excessive pH readings may indicate irregularities in the manufacturing process that require attention. Including these parameters guarantees that the model captures such variability and facilitates proactive monitoring. A sensitivity analysis found that deleting outliers did not significantly enhance model performance measures (RMSE, R-squared, MAE). Hence, we prioritized model generalization without outlier removal.
+
+## 2.1 Zero Variance Predictors, Missing Values
+
+To avoid issues caused by case sensitivity or spaces in column names, we standardized all column names using the janitor package's make_clean_names() function. Next, the group utilized the nearZeroVar() function to find predictors that had no variation. These predictors were deleted because they do not improve the model's predictive power and can reduce computing efficiency (Hyd Pressure1 was eliminated from further analysis).  
+
+```{r colnames_zeroVar}
+#Fix column names
+colnames(beverage_df) <- make_clean_names(colnames(beverage_df))
+#Apply the same to eval_df 
+colnames(eval_df) <- make_clean_names(colnames(eval_df))
+#Check new column names
+colnames(beverage_df)
+
+# Identify zero-variance predictors
+zero_var <- nearZeroVar(beverage_df, saveMetrics = TRUE)
+print(zero_var[zero_var$nzv, ])
+
+beverage_df <- beverage_df[, !zero_var$nzv]
+eval_df <- eval_df[, !zero_var$nzv]
+```
+
+Our dataset contained missing data on several crucial variables. To solve this, we used a two-pronged strategy to imputing missing data, combining K-Nearest Neighbors (KNN) and Random Forest techniques.  
+
+K-Nearest Neighbors (KNN) imputation approximates missing variables using nearest neighbors' values. It works on the idea that similar data points can be located close together in space. We started by identifying numeric variables that had missing values. For each missing value, we identified the 'k' closest neighbors (in terms of other available attributes) and calculated the median of their values to close the gap. We determined a figure for 'k' based on our data distribution, going with k=5 to strike a balance between bias and variance. The group decision was to treat 'MNF Flow' variable's placeholders '-100' as missing. After marking them, we used KNN imputation to ensure that the imputed values mirrored typical operational data.  
+We employed Random Forest imputation for categorical data (variable Brand Code). We first created a random forest that predicts the variable with missing values using other variables. Next, we trained the model using observations in which the target variable is not missing, and used this model to forecast and impute missing values in observations where the target variable is not present.  
+
+
+```{r impute_numeric}
+set.seed(547)
+
+#KNN imputation
+beverage_imputed <- as.data.frame(beverage_df)
+beverage_imputed <- knnImputation(beverage_imputed[, !names(beverage_imputed) %in% c("brand_code", "mnf_flow")])
+beverage_imputed$brand_code <- beverage_df$brand_code
+beverage_imputed$mnf_flow <- beverage_df$mnf_flow
+
+#KNN imputation mnf_flow
+beverage_imputed$mnf_flow[beverage_imputed$mnf_flow == -100] <- NA
+beverage_imputed <-  knnImputation(beverage_imputed[, !names(beverage_imputed) %in% c("brand_code")], k = 5, scale = TRUE, meth = 'median')  
+beverage_imputed$brand_code <- beverage_df$brand_code
+
+eval_imputed <- as.data.frame(eval_df)
+eval_imputed <- knnImputation(eval_imputed[, !names(eval_imputed) %in% c("brand_code", "ph")])
+eval_imputed$brand_code <- eval_df$brand_code
+eval_imputed$ph <- eval_df$ph
+```
+
+```{r brand_Code_impute}
+set.seed(547)
+impute_rf <- function(data, target_var, exclude_vars = NULL) {
+  #Ensure target_var is a factor
+  data[[target_var]] <- factor(data[[target_var]])
+  
+  #Exclude specified variables from the model input
+  if (!is.null(exclude_vars)) {
+    model_data <- data[, !(names(data) %in% exclude_vars)]
+  } else {
+    model_data <- data
+  }
+  
+  #Train model on non-NA data for the target variable
+  rf_model <- randomForest(reformulate(".", target_var), data = model_data[!is.na(model_data[[target_var]]),], na.action = na.omit)
+  
+  #Predict NAs
+  na_indices <- is.na(data[[target_var]])
+  if (sum(na_indices) > 0) {
+    predicted_values <- predict(rf_model, newdata = model_data[na_indices,])
+    data[[target_var]][na_indices] <- predicted_values
+  }
+  
+  return(data)
+}
+
+beverage_imputed <- impute_rf(beverage_imputed, "brand_code")
+eval_imputed <- impute_rf(eval_imputed, "brand_code", exclude_vars = "ph")
+
+#Verify
+colSums(is.na(beverage_imputed))
+colSums(is.na(eval_imputed))
+```
+
+## 2.2 New features, Transformations
+
+When dealing with the 'Brand Code' variable, which categorizes beverages into distinct brands, we must convert the categorical data into a format that our algorithms can better understand. Normally, these models expect numerical input, however 'Brand Code' consists of letters representing various brands, which does not directly inform the model much about the relationships or differences between them. To deal with this, we utilized one-hot encoding. This approach converts each brand category into a new binary (0 or 1) column, instead of one column for 'Brand Code', we got three new columns: 'brand_code.B', 'brand_code.C', and 'brand_code.D'. If a beverage is from Brand B, 'brand_code.B' will be 1 and all other values will be 0. 
+
+```{r encode_categorical}
+#One-hot Encoding for Brand Code
+beverage_imputed$brand_code <- as.factor(beverage_imputed$brand_code)
+eval_imputed$brand_code <- as.factor(eval_imputed$brand_code)
+#Create dummies
+dummy_vars <- dummyVars(~ brand_code, data = beverage_imputed, fullRank = TRUE)
+beverage_imputed <- cbind(beverage_imputed, predict(dummy_vars, newdata = beverage_imputed))
+beverage_imputed <- beverage_imputed %>% select(-brand_code) 
+
+eval_imputed <- cbind(eval_imputed, predict(dummy_vars, newdata = eval_imputed))
+eval_imputed <- eval_imputed %>% select(-brand_code) 
+```
+
+To investigate interactions and nonlinear relationships, new variables were created (setpoint_diff, carb_volume2, and pc_volume_pressure).Setpoint_diff quantifies the operational variance between bowl_setpoint and pressure_setpoint to get more information about process stability.carb_volume2 (the square of carb_volume) and pc_volume_pressure (the product of pc_volume and carb_pressure) are intended to capture non-linear dependencies and interaction effects that may be missed by linear models. Polynomial and interaction terms help to capture these complexities of non-linear relationships to improve model's accuracy. After, binning was applied to carb_temp to categorize continuous temperature data into discrete periods based on quartiles. Binning converts continuous data into categorical components, which can improve pattern recognition and interpretation in the context of pH effect. 
+
+
+```{r new_features}
+#Creating Interaction Terms
+beverage_revised <- beverage_imputed %>%
+  select(-contains('_interaction'), -contains('composite'), -contains('efficiency'), -contains('index')) %>%
+  mutate(
+    setpoint_diff = bowl_setpoint - pressure_setpoint,  #feature engineering
+    carb_volume2 = carb_volume^2,  #Polynomial feature for carb_volume
+    pc_volume_pressure = pc_volume * carb_pressure  #Interaction feature
+  )
+
+eval_revised <- eval_imputed %>%
+  select(-contains('_interaction'), -contains('composite'), -contains('efficiency'), -contains('index')) %>%
+  mutate(
+    setpoint_diff = bowl_setpoint - pressure_setpoint,  #feature engineering
+    carb_volume2 = carb_volume^2,  #Polynomial feature for carb_volume
+    pc_volume_pressure = pc_volume * carb_pressure  #Interaction feature
+  )
+
+#Remove original columns to reduce collinearity
+beverage_revised <- beverage_revised %>%
+  select(-c(bowl_setpoint, pressure_setpoint, carb_volume, pc_volume, carb_pressure))
+eval_revised <- eval_revised %>%
+  select(-c(bowl_setpoint, pressure_setpoint, carb_volume, pc_volume, carb_pressure))
+
+#Creating a binned feature for carb_temp
+beverage_revised$carb_temp_binned <- cut(beverage_revised$carb_temp,
+                                         breaks=quantile(beverage_revised$carb_temp, probs=seq(0, 1, 0.25)),
+                                         include.lowest=TRUE,
+                                         labels=FALSE)
+
+eval_revised$carb_temp_binned <- cut(eval_revised$carb_temp,
+                                         breaks=quantile(eval_revised$carb_temp, probs=seq(0, 1, 0.25)),
+                                         include.lowest=TRUE,
+                                         labels=FALSE)
+
+#Remove original carb_temp if the binned version is preferred
+beverage_revised <- beverage_revised %>%
+  select(-carb_temp)
+
+eval_revised <- eval_revised %>%
+  select(-carb_temp)
+```
+
+Logarithmic and square root transformations were applied to variables such as filler_speed, mfr, and air_pressurer to normalize distributions and mitigate the impact of extreme values. Such transformations stabilize variance and minimize skewness, making the modeling process more robust and less vulnerable to outliers. 
+
+```{r transform_vars}
+#Apply transformations
+set.seed(123)
+# Log transformations
+beverage_transformed <- beverage_imputed
+beverage_transformed$filler_speed <- log(beverage_transformed$filler_speed)
+beverage_transformed$mfr <- log(beverage_transformed$mfr)
+
+#Square root transformations
+beverage_transformed$temperature <- sqrt(beverage_transformed$temperature)
+beverage_transformed$air_pressurer <- sqrt(beverage_transformed$air_pressurer)
+
+#Shifted log transformations
+beverage_transformed$oxygen_filler <- log(beverage_transformed$oxygen_filler + 1)
+beverage_transformed$psc_co2 <- log(beverage_transformed$psc_co2 + 1)
+
+#Log transformations
+eval_transformed <- eval_imputed
+eval_transformed$filler_speed <- log(eval_imputed$filler_speed)
+eval_transformed$mfr <- log(eval_imputed$mfr)
+
+#Square root transformations
+eval_transformed$temperature <- sqrt(eval_transformed$temperature)
+eval_transformed$air_pressurer <- sqrt(eval_transformed$air_pressurer)
+
+#Shifted log transformations
+eval_transformed$oxygen_filler <- log(eval_transformed$oxygen_filler + 1)
+eval_transformed$psc_co2 <- log(eval_transformed$psc_co2 + 1)
+```
+
+
+Tables 7, 8 were created to visualize these changes and to guarantee the integrity and effectiveness of the transformations applied. The summary tables show that, after considerable processing, the data's key statistical features (mean, standard deviation, interquartile ranges) are consistent with operational expectations. The dataset now includes new variables (brand_code.B, brand_code.C, brand_code.D) as well as interaction terms (setpoint_diff, carb_volume2, and pc_volume_pressure). Variables with zero variance and non-contributory qualities were deleted (Hyd Pressure 1). The imputation of missing values and encoding of categorical variables resulted in complete and correctly formatted datasets. The absence of missing data points in the post-preparation summary tables, as well as the accurate encoding of categorical variables into numerical form, demonstrate the efficacy of these procedures. Overall, the prepared dataset, as shown in the summary tables, demonstrates that the data is ready for the following steps of modeling. 
+
+```{r}
+#Summary statistics
+DT::datatable(
+      dfSummary(beverage_revised, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 7: Summary Statistics for Transformed Beverage Data'
+  )) 
+ 
+
+#Summary statistics
+DT::datatable(
+      dfSummary(eval_revised, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 8: Summary Statistics for Transformed Evaluation Data'
+  )) 
+```
+
+# 3. Build Models
+
+We used a rigorous approach to developing predictive models for pH levels in beverage production, based on thorough data preparation and validation results from prior phases. Here's an overview of the steps involved in model building:  
+
+-   **Data Splitting:**
+    -   Splitted data into training and testing sets using `createDataPartition()`. This was used to test the model with previously unseen data. This step also ensured that the distribution of our target variable remains consistent across training and testing sets.  
+-   **Model Selection:**
+    -   **MARS (Multivariate Adaptive Regression Splines):**  Handle non-linear interactions well and are adaptable to the shape of the error distribution in pH prediction.  
+    -   **Support Vector Machine (SVM):** Provide a powerful categorization framework by determining the best boundary between different pH levels.  
+    -   **Neural Networks:** Ideal for capturing complex patterns in large datasets but may require significant computational resources.
+    -   **Gradient Boosting:** Manages a variety of data types and gradually improves performance through boosting.
+    -   **Random Forest:** Effective for handling non-linear relationships and resistant to overfitting.  
+-   **Cross-Validation:**
+    -   Specified in `trainControl()`, it ensures rigorous validation and prevents the model from being tailored to a single subset of the data.
+    -   Repeated cross-validation helps reduce variance in the model evaluation process, in order to get a more accurate performance estimate.
+-   **Hyperparameter Tuning:**
+    -   Used grids (`expand.grid()`) for distinct model parameters for a systematic searching through a set of alternatives to discover the ideal combination that maximizes model performance.  
+-   **Parallel Processing:**  
+    - Used parallel processing techniques to create a multi-core computing environment to speed up the computational process.  
+
+```{r parallel_core}
+#Detect the number of available cores
+numCores <- detectCores()
+
+#Register parallel backend (use numCores - 1 to leave 1 core free for system tasks)
+cl <- makeCluster(numCores - 1)
+registerDoParallel(cl)
+```
+
+```{r split_data_revised}
+#Data with new features
+set.seed(123)
+trainIndex <- createDataPartition(beverage_revised$ph, p = 0.8, list = FALSE)
+train_revised <- beverage_revised[trainIndex, ]
+test_revised <- beverage_revised[-trainIndex, ]
+eval_revised <- subset(eval_revised, select = -ph)
+```
+
+```{r split_data_transf}
+set.seed(123)
+trainIndex <- createDataPartition(beverage_transformed$ph, p = 0.8, list = FALSE)
+train_transformed <- beverage_transformed[trainIndex, ]
+test_transformed <- beverage_transformed[-trainIndex, ]
+eval_transformed <- subset(eval_transformed, select = -ph)
+#Setup cv
+control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, allowParallel = TRUE)
+```
+
+## 3.1 MARS
+
+MARS (Multivariate Adaptive Regression Splines) is an effective model for capturing nonlinear relationships and interactions between variables. It employs piecewise linear splines to simulate complicated, non-linear interactions, for situations where the connection between the characteristics and the target variable is not strictly linear. Data preparation step included scaling and centering to standardize feature scales to make sure that all predictors are on the same scale as well as previously mentioned grid and control parameters. We used the "earth" technique to discover the best combination of parameters by selecting a range of degrees and pruning terms. To avoid overfitting, it starts with the maximum number of basis functions and prunes them using the generalized cross-validation criterion. We tested the model's performance using various measures, such as RMSE, R-squared, and MAE. The best model, with a degree of 2 and 20 pruning terms showed the results below:  
+
+RMSE of 0.1269 indicates that the predicted pH values deviate by 0.1269 units from the actual pH values. RMSE is sensitive to big errors and favors outliers.  
+R-squared of 0.459 means that the model accounts for around 45.9% of the variance in pH readings, which is a reasonable result, indicating that the model captures some of the underlying trends but is not yet ideal.  
+MAE of 0.0960 means that the average absolute difference between predicted and actual pH values is 0.0960 units, indicating that the model accurately predicts pH levels.
+
+The test set results indicate that the model performs slightly better on the test data than on the training set, which is a good sign of generalization (RMSE=0.122, R-squared=0.510, MAE=0.092).
+
+```{r mars_model}
+set.seed(123)
+#Grid with parameters
+marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
+
+#Train MARS
+marsModel <- train(ph ~ ., data = train_transformed, 
+                   method = "earth",
+                   preProc = c("center", "scale"),
+                   tuneGrid = marsGrid,
+                   trControl = control
+)
+
+
+#degree nprune      RMSE   Rsquared       MAE   
+# 2     20      0.1269369   0.459168    0.0960094 
+mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
+kable(mars_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("MARS Model Tuning Results"=9), bold = TRUE)
+
+#Predict
+marsPred <- predict(marsModel, newdata = test_transformed)
+#RMSE      Rsquared        MAE 
+#0.12208106 0.51031566 0.09219265
+mars_results <- postResample(pred = marsPred, obs = test_transformed$ph)
+kable(mars_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("MARS Model Performance Metrics"=2), bold = TRUE)
+```
+
+The table and the plot below provides information about which variables are most influential in forecasting pH levels. mnf_flow is the most important predictor, with a score of 100%. brand_code.C and hyd_pressure3 are likewise very influential, scoring 72.84% and 70.05%, respectively. Other important predictors include alch_rel, bowl_setpoint, and pressure_vacuum, all of which contribute significantly to the model's predictions. Operational variables such as mnf_flow and brand_code.C, as well as process characteristics like hyd_pressure3, are the most important determinants in forecasting pH levels in beverage production.
+
+```{r mars_varimpt}
+importance_mars <- varImp(marsModel, scale = FALSE)
+importance_mars_sorted <- as.data.frame(importance_mars$importance) %>%
+  arrange(desc(Overall))
+kable(importance_mars_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("MARS Model Variable Importance" = 2), bold = TRUE)
+plot(importance_mars, top = 10, main = "Top 10 predictors, MARS Model") 
+```
+
+## 3.2 Support Vector Machine
+
+The Support Vector Machine (SVM) is effective for determining the best hyperplane that separates target classes in a high-dimensional environment. SVM, which uses a radial basis function (RBF) kernel, can capture complex, nonlinear interactions between predictors and the target variable, making it suited for pH prediction. Predictors were scaled and centered to achieve consistent feature contribution and prevent bias due to different measurement units. The model was customized using a grid of hyperparameters, specifically C (cost) and sigma (kernel width), which regulate the regularization and flexibility of the decision boundary. Repeated 10-fold cross-validation was employed to assess model stability and prevent overfitting. The model's performance was tested using the RMSE, R-squared, and MAE metrics. The best SVM model, with sigma = 0.01 and C = 10, produced the following results:  
+
+The RMSE of 0.1194 implies that projected pH values differ by 0.1194 units on average from actual values. RMSE detects greater errors and helps identify outliers.  
+R-squared = 0.5236 indicates that the SVM model explains around 52.4% of the variance in pH values, which is a significant improvement over simpler models.  
+MAE of 0.0877 is the average absolute error, indicating that forecasts are consistently near to real pH levels.  
+
+The model's generalization capabilities were evaluated on the test set, yielding results that closely corresponded with training metrics (RMSE = 0.1179, R-squared = 0.5450, and MAE = 0.0845). This consistency shows that the model is well-tuned and avoids overfitting.  
+
+
+```{r svm_model}
+set.seed(123)
+#Grid with parameters
+svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
+#Train SVM
+svmModel <- train(ph ~ ., data = train_transformed, 
+                  method = "svmRadial", 
+                  preProc = c("center", "scale"),
+                  tuneGrid = svmGrid,
+                  trControl = control
+                  )
+
+#sigma  C      RMSE   Rsquared        MAE   
+# 0.01 10  0.1193689  0.5235771   0.08771225
+svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
+kable(svm_tune , "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("SVM Model Tuning Results"=9), bold = TRUE)
+
+#Predict
+svmPred <- predict(svmModel, newdata = test_transformed)
+#RMSE   Rsquared        MAE 
+#0.11787203 0.54495184 0.08445738 
+svm_results <- postResample(pred = svmPred, obs = test_transformed$ph)
+kable(svm_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("SVM Model Performance Metrics"=2), bold = TRUE)
+```
+
+The Support Vector Machine model finds mnf_flow as the most important factor driving pH predictions, with a significance value of 0.229. This consistent observation across models emphasizes the significant impact of mnf_flow on pH variability. Other significant predictors include usage_cont (0.149), bowl_setpoint (0.115), and filler_level (0.102), operational aspects such as equipment usage and setpoints play important roles in affecting pH levels. Variables such as pressure_setpoint (0.098), carb_flow (0.087), and brand_code.C (0.079) make significant contributions. The relevance of brand_code.C shows that pH varies between product lines, which is consistent with the Random Forest model findings. Lower-ranked variables, such as hyd_pressure3 (0.054) and pressure_vacuum (0.049), confirm that pressure changes affect pH behavior but are less dominating.
+
+```{r svm_varimpt}
+importance_svm <- varImp(svmModel, scale = FALSE)
+importance_svm_sorted <- as.data.frame(importance_svm$importance) %>%
+  arrange(desc(Overall))
+kable(importance_svm_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("SVM Model Variable Importance" = 2), bold = TRUE)
+plot(importance_svm, top = 10, main = "Top 10 predictors, SVM Model")
+```
+
+## 3.3 Neural networks
+
+Neural Networks (NNets) are extremely successful at capturing complicated, non-linear patterns because they simulate coupled neurons across numerous layers. To improve stability and robustness in our investigation, we used an ensemble neural network (avNNet). To achieve effective gradient descent optimization, predictors were scaled and centered.  The model was optimized for size (hidden nodes) and decay (regularization) parameters. A 10-fold repeated cross-validation ensured accurate performance estimates. The best model, with size = 10 and decay = 0, generated the following results:  
+
+The RMSE of 0.1107 indicates that forecasts differ by 0.1107 units from actual pH readings.  
+R-squared = 0.5979 indicates that the neural network captures almost 59.8% of the variance in pH levels, exceeding earlier models such as SVM.  
+The MAE of 0.0827 indicates that the model is accurate, with tiny average absolute errors.  
+
+On the test set, the model achieved RMSE = 0.1107, R-squared = 0.5979, and MAE = 0.0827, indicating strong generalizability.
+
+```{r nnet_model}
+set.seed(123)
+#Grid with parameters
+nnetGrid <- expand.grid(.decay = c(0, 0.01, 0.1), .size = 1:10, .bag = FALSE)
+
+#Train avNNet
+nnetModel <- train(ph ~ ., data = train_transformed, 
+                   method = "avNNet",
+                   preProc = c("center", "scale"),
+                   tuneGrid = nnetGrid,
+                   trControl = control,
+                   linout = TRUE,
+                   trace = FALSE)  
+
+#decay size   bag      RMSE    Rsquared       MAE
+#  0   10   FALSE   0.1145209   0.5585798 0.0855949 
+nnet_tune <- nnetModel$results[nnetModel$results$size == nnetModel$bestTune$size & nnetModel$results$decay == nnetModel$bestTune$decay, ]
+kable(nnet_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("avNNet Model Tuning Results"=10), bold = TRUE)
+
+#Predict
+nnetPred <- predict(nnetModel, newdata = test_transformed)
+#RMSE        Rsquared        MAE 
+#0.11073852 0.59788239 0.08266435
+nnet_results <- postResample(pred = nnetPred, obs = test_transformed$ph)
+kable(nnet_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("avNNet Model Performance Metrics"=2), bold = TRUE)
+```
+
+The Neural Network model confirms mnf_flow as the most significant predictor, with an overall score of 0.229. This is consistent with other models, demonstrating the variable's strong impact on pH variability. The second most critical predictor, usage_cont (0.150), represents operational usage management, which has a direct impact on pH consistency. Other important contributors are bowl_setpoint (0.115), filler_level (0.102), and pressure_setpoint (0.098), demonstrating the significance of equipment settings and operational controls. Notably, oxygen_filler (0.032) and carb_rel (0.025) are significant contributors, implying that gas regulatory systems influence pH levels.
+
+
+```{r nnet_varimpt}
+importance_nnet <- varImp(nnetModel, scale = FALSE)
+importance_nnet_sorted <- as.data.frame(importance_nnet$importance) %>%
+  arrange(desc(Overall))
+kable(importance_nnet_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("avNNet Model Variable Importance" = 2), bold = TRUE)
+plot(importance_nnet, top = 10, main = "Top 10 predictors, avNNet Model")
+```
+
+## 3.4 Gradient Boosting
+
+Gradient Boosting combines weak learners (decision trees) in a sequential manner, with each tree correcting errors caused by prior trees. This iterative method makes GBM an effective tool for prediction tasks. Scaling and centering were used to ensure consistency. Grid search was used to improve shrinkage (learning rate), interaction depth, and tree number. 10-fold repeated cross-validation reduced overfitting concerns while maintaining steady performance. The best GBM model, with 1000 trees and an interaction depth of 7, obtained:  
+
+The RMSE of 0.1055 indicates high accuracy, with little difference between predicted and real pH readings.  
+R-squared of 0.6445 shows that the model accounts for 64.5% of the variance in pH measurements.  
+The MAE of 0.0793 indicates great precision with continuously low prediction errors.  
+
+Test Set Results: The GBM model demonstrated significant generalization with test metrics of RMSE = 0.1055, R-squared = 0.6445, and MAE = 0.0793.
+
+```{r gbm_model}
+set.seed(123)
+#Grid with parameters
+gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
+#Train GBM
+gbm_model <- train(ph ~ ., data = train_revised, 
+                   method = "gbm", 
+                   preProc = c("center", "scale"),
+                   tuneGrid = gbmGrid, 
+                   trControl = control,
+                   verbose = FALSE)
+
+#shrinkage interaction.depth n.minobsinnode n.trees      RMSE     Rsquared        MAE   
+# 0.01                 7             10    1000       0.1101819    0.5955535 0.08304377
+gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
+kable(gbm_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("GBM Model Tuning Results"=11), bold = TRUE)
+
+#Predict
+gbm_predictions <- predict(gbm_model, newdata = test_revised)
+#      RMSE   Rsquared        MAE 
+#0.10548388 0.64448254 0.07928038 
+gbm_results <- postResample(pred = gbm_predictions, obs = test_revised$ph)
+kable(gbm_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("GBM Model Performance Metrics"=2), bold = TRUE)
+```
+
+The Gradient Boosting model reveals mnf_flow as the strongest predictor, with a significance score of 328.4, outperforming all other variables. This observation underscores the importance of mnf_flow in regulating pH levels during manufacturing. The key operational and process predictors are brand_code.C (101.4), alch_rel (94.8), and oxygen_filler (87.8). These variables indicate that product-specific features, alcohol concentration, and gas filling methods are all important contributors to pH variations. Other key predictors, including pressure_vacuum (56.6), carb_rel (55.8), and temperature (75.6), emphasize the need of pressure and temperature controls in preserving product quality.  
+
+```{r gbm_varimpt}
+importance_gbm <- varImp(gbm_model, scale = FALSE)
+importance_gbm_sorted <- as.data.frame(importance_gbm$importance) %>%
+  arrange(desc(Overall))
+kable(importance_gbm_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("GBM Model Variable Importance" = 2), bold = TRUE)
+plot(importance_gbm, top = 10, main = "Top 10 predictors, GBM")
+```
+
+## 3.5 Random Forest
+
+Random Forest (RF) is an ensemble learning method that combines numerous decision trees and averages their predictions to reduce variation and improve model robustness. While RF does not require scaling, it was used to provide uniformity between models. The number of randomly chosen predictors (mtry) was improved. Repeated 10-fold cross-validation ensured a reliable evaluation. The RF model, with mtry = 10, achieved the best performance of all models:  
+
+The RMSE of 0.0963 indicates a minimum difference between anticipated and actual values.  
+R-squared of 0.7130 indicates that RF explains 71.3% of the variance in pH readings, the greatest among the models.  
+The MAE of 0.0699 illustrates the model's high accuracy and precision.  
+
+The scatter plot depicts the association between the actual and anticipated pH values provided by the Random Forest model. The red dashed line depicts the ideal scenario where predictions match actual data. The majority of the points cluster tightly around this line, showing that the Random Forest model works quite effectively. The model accurately captures patterns and relationships in the data, with most predictions near the line. Minor variances do occur, particularly for lower pH levels, although they are tiny and acceptable within the stated range. The model performed remarkably well on the test set, with RMSE = 0.0963, R-squared = 0.7130, and MAE = 0.0699, demonstrating its generalizability.  
+
+```{r rf_model}
+set.seed(123)
+#Grid with parameters
+rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
+
+#Train rf
+rf_model <- train(ph ~ ., data = train_revised, 
+                  method = "rf",
+                  preProc = c("center", "scale"),
+                  trControl = control,
+                  tuneGrid = rfGrid,
+                  importance = TRUE) 
+
+#mtry      RMSE   Rsquared        MAE   
+# 10  0.1007928     0.6741332   0.07271081 
+rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
+kable(rf_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("RF Model Tuning Results"=8), bold = TRUE)
+#Predict
+rf_pred <- predict(rf_model, newdata = test_revised)
+#RMSE      Rsquared        MAE 
+#0.09630017 0.71303966 0.06989033 
+rf_results <- postResample(pred = rf_pred, obs = test_revised$ph)
+kable(rf_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("RF Model Performance Metrics"=2), bold = TRUE)
+
+# Correct data frame for actual vs predicted values
+res<- data.frame(Actual = test_revised$ph, Predicted = rf_pred)
+# Scatter plot: Actual vs Predicted Values
+ggplot(res, aes(x = Actual, y = Predicted)) +
+    geom_point(color = "blue", alpha = 0.7) +
+    geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+    labs(title = "Actual vs Predicted pH Values (RF Model)", 
+         x = "Actual pH", y = "Predicted pH") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+```
+
+The Random Forest model identifies the important features shown in the table below. The variable mnf_flow is the most significant predictor, with an overall importance score of 44.54. This finding supports the previous analysis, which revealed that operational control of the mnf_flow variable was crucial for reducing pH variability. Other highly influential predictors include oxygen_filler (34.35), pressure_vacuum (31.16), and carb_rel (29.64), which represent critical parts of the manufacturing process such as gas flow regulation and pressure adjustment. These variables are expected to influence the pH via changing carbonation levels and liquid pressure during manufacture. Other relevant variables include air_pressurer (29.19), brand_code.C (28.84), temperature (28.52), and filler_speed (28.06). These considerations highlight the relevance of both operational settings and equipment performance in ensuring consistent pH levels. Interestingly, brand-specific variables such as brand_code.C and brand_code.B indicate that different product lines may have differential pH behavior.  
+
+
+```{r rf_variimpt}
+importance_rf <- varImp(rf_model, scale = FALSE)
+importance_rf_sorted <- as.data.frame(importance_rf$importance) %>%
+  arrange(desc(Overall))
+kable(importance_rf_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("RF Model Variable Importance" = 2), bold = TRUE)
+plot(importance_rf, top = 10, main = "Top 10 predictors, Random Forest")
+```
+
+```{r}
+#Stop parallel once you're done with models
+stopCluster(cl)
+```
+
+# 4. Model Selection
+
+Resampling metrics (RMSE, R-squared, MAE) from model training were compared to test metrics to evaluate overfitting and generalization capabilities.
+Models were judged on predicted accuracy, robustness, and computational efficiency.
+The final decision was based on these criteria to produce a model that performs well under various circumstances.
+
+**Detailed Bullet Points Describing Each Model:**
+
+-   **Random Forest (RF):**
+    -   **Performance:** Outperforms in almost all metrics with the lowest RMSE (0.0963) and highest R-squared (0.7130). The MAE is also the lowest at 0.0699, indicating predictions are close to actual values with minimal error.
+    -   **Strengths:** High accuracy, robustness, and ability to handle non-linear relationships.
+    -   **Considerations:** Requires more training time and resources; careful tuning needed to avoid overfitting.
+-   **Gradient Boosting Machine (GBM):**
+    -   **Performance:** Competitive scores, particularly in test R-squared (0.6445), showing resilience in handling dataset variations.
+    -   **Strengths:** Effective for managing a variety of data types and gradually improving performance through boosting.
+    -   **Considerations:** Similar to RF, requires careful tuning and more computational resources.
+-   **Neural Network (NNet):**
+    -   **Performance:** Performs well, marginally outperforming in resampling and testing metrics, making it a viable alternative if ensemble approaches are not preferred.
+    -   **Strengths:** Ideal for capturing complex patterns in large datasets.
+    -   **Considerations:** Demands significant computational resources and careful tuning to avoid overfitting.
+-   **Support Vector Machine (SVM):**
+    -   **Performance:** Performs well but slightly behind NNet in terms of metrics.
+    -   **Strengths:** Effective for determining the ideal boundary between outputs; best suited for boundary decisions.
+    -   **Considerations:** Easier to interpret compared to ensemble and neural network models.
+-   **Multivariate Adaptive Regression Splines (MARS):**
+    -   **Performance:** Beneficial for capturing nonlinear interactions but falls behind other models in performance metrics.
+    -   **Strengths:** Flexible non-parametric technique capable of modeling nonlinearities and interactions.
+    -   **Considerations:** Easier to interpret but less accurate compared to other models.
+
+**Final Recommendation:**   
+- **Chosen Model:** Random Forest is recommended for deployment due to its superior performance in all key metrics.  
+- **Next Steps:** Include rigorous validation to confirm the RF model's stability, investigate feature engineering based on RF variable importance, and explore potential ensemble methods to combine strengths from multiple models for improved prediction accuracy.
+
+Across all models, mnf_flow consistently appeared as the most important predictor of pH levels, emphasizing its central role in driving variance. Other operational factors, including oxygen_filler, brand_code.C, and pressure_vacuum, were also significant.
+
+```{r compare_models}
+#Create empty df
+results <- data.frame(
+  Model = character(),
+  Resample_RMSE = numeric(),
+  Resample_R2 = numeric(),
+  Resample_MAE = numeric(),
+  Test_RMSE = numeric(),
+  Test_R2 = numeric(),
+  Test_MAE = numeric(),
+  stringsAsFactors = FALSE
+)
+
+#Fill df with results
+results <- rbind(results, data.frame(Model = "MARS", Resample_RMSE = mars_tune$RMSE, Resample_R2 = mars_tune$Rsquared, Resample_MAE = mars_tune$MAE, Test_RMSE = mars_results[1], Test_R2 = mars_results[2], Test_MAE = mars_results[3]))
+results <- rbind(results, data.frame(Model = "SVM", Resample_RMSE = svm_tune$RMSE, Resample_R2 = svm_tune$Rsquared, Resample_MAE = svm_tune$MAE, Test_RMSE = svm_results[1], Test_R2 = svm_results[2], Test_MAE = svm_results[3]))
+results <- rbind(results, data.frame(Model = "NNet", Resample_RMSE = nnet_tune$RMSE, Resample_R2 = nnet_tune$Rsquared, Resample_MAE = nnet_tune$MAE, Test_RMSE = nnet_results[1], Test_R2 = nnet_results[2], Test_MAE = nnet_results[3]))
+results <- rbind(results, data.frame(Model = "GBM", Resample_RMSE = gbm_tune$RMSE, Resample_R2 = gbm_tune$Rsquared, Resample_MAE = gbm_tune$MAE, Test_RMSE = gbm_results[1], Test_R2 = gbm_results[2], Test_MAE = gbm_results[3]))
+results <- rbind(results, data.frame(Model = "RF", Resample_RMSE = rf_tune$RMSE, Resample_R2 = rf_tune$Rsquared, Resample_MAE = rf_tune$MAE, Test_RMSE = rf_results[1], Test_R2 = rf_results[2], Test_MAE = rf_results[3]))
+row.names(results) <- NULL
+
+kable(results, "html", escape = FALSE, align = c('l', rep('c', 6)), col.names = c("Model", "Resample RMSE", "Resample R²", "Resample MAE", "Test RMSE", "Test R²", "Test MAE")) %>%
+  kable_styling("striped", full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  add_header_above(c(" " = 1, "Resample Metrics" = 3, "Test Metrics" = 3), 
+                   bold = TRUE, background = "#D3D3D3", color = "black")
+```
+
+The Random Forest model was used to create predictions for the evaluation dataset, and it outperformed all other assessment measures. To ease further study and sharing with stakeholders, the predictions were saved in two forms. The evaluation dataset now includes a new column, ph_pred, which contains projected pH values. We also created a single file containing only projected pH values for easy reporting.
+
+To ensure that the model's predictions matched the structure of the original data, we compared the distributions of original pH values and predicted pH values. The histogram (sky blue) displays the symmetric distribution of pH values in the original dataset, centered around 8.5 with a modest spread. The projected pH distribution (light green) closely matches the original data's shape and center, indicating that the model accurately reflects pH trends.  
+
+```{r save_pred}
+#Predictions for the evaluation dataset
+eval_pred <- predict(rf_model, newdata = eval_revised)
+
+#Create df
+eval_results <- data.frame(
+  ph_pred = eval_pred
+)
+
+eval_df_pred <- eval_df
+eval_df_pred$ph <- eval_pred
+
+#Save to Excel
+write_xlsx(eval_df_pred , "eval_df_pred .xlsx")
+write_xlsx(eval_results, "ph_predictions.xlsx")
+
+par(mfrow = c(1, 2))
+hist(beverage_revised$ph, main = "Original Data Distribution", xlab = "pH", col = "skyblue", border = "white")
+hist(eval_pred, main = "Predicted pH Distribution", xlab = "pH", col = "lightgreen", border = "white")
+par(mfrow = c(1, 1))
+```
+
+# 5. Conclusion
+
+The ten highest variables of importance in our random forest model provide a valuable starting point for optimization, with a particular focus on minimizing the mnf_flow variable, which carries the highest explained variance in the model.
+According to the correlation plot, mnf_flow is also likely negatively correlated with pH. Keeping this in mind will be crucial for increasing efficiency in the manufacturing process.
+By addressing and optimizing these key variables such as oxygen_filler, pressure_vacuum, and carb_rel, ABC Beverage can significantly enhance production quality and consistency.
+
+The predictive modeling project offers significant benefits, including improved regulatory compliance by accurately predicting pH levels, ensuring that products meet industry standards.
+Enhanced production efficiency is achieved through better control of manufacturing processes, reducing variability and waste.
+The insights gained from the model can lead to more consistent product quality, optimized resource usage, and informed decision-making.
+
+Recommendations:  
+- Reduce variability in mnf_flow by using stronger monitoring and automated controls to stabilize flow rates and ensure consistent pH levels.  
+- Integrate predictive analytics by using real-time analytics to proactively monitor and alter important factors during manufacturing, lowering the possibility of deviations.  
+- Optimize key predictors by prioritizing improvements in factors such as oxygen_filler, pressure_vacuum, and carb_rel by focused process improvements.  
+- Refine models using new data by continuously updating predictive models as new operational data becomes available, ensuring greater accuracy and responsiveness to changing production requirements.  
+- Adopt advanced monitoring tools by creating dashboards and alerts that use these models to tell stakeholders about potential problems before they affect production.
+
+We encourage stakeholders to consider the recommendations provided and support further steps to integrate analytics into production practices.
+By adopting these predictive models, ABC Beverage can enhance its operational efficiency, maintain high-quality standards, and stay ahead of regulatory requirements.
+Your support in this initiative will be crucial for driving continuous improvement and innovation in our production processes.
+
+# References
+
+1. Kuhn, M., & Johnson, K. (2013). Applied Predictive Modeling. Springer.  
+2. Friedman, J., Hastie, T., & Tibshirani, R. (2009). The Elements of Statistical Learning: Data Mining, Inference, and Prediction. Springer.  
+3. Hyndman, R. J., & Athanasopoulos, G. (2021). Forecasting: Principles and Practice (3rd ed.). OTexts. Retrieved from https://otexts.com/fpp3/  
+4. Breiman, L. (2001). Random Forests. Machine Learning, 45(1), 5-32.  
+5. Friedman, J. H. (2001). Greedy Function Approximation: A Gradient Boosting Machine. Annals of Statistics, 29(5), 1189-1232.  
+
+# Appendix: R Code
+
+```{r code, eval=FALSE, include=TRUE, echo=TRUE}
+## ----setup, message=FALSE, warning=FALSE, include=FALSE-------------------------------------------------------------------------------------------------------------------
+#chunks
+knitr::opts_chunk$set(eval=TRUE, message=FALSE, warning=FALSE, echo=TRUE, fig.height=5, fig.align='center')
+
+#libraries
+library(tidyverse)
+library(DMwR)
+library(xgboost)
+library(vip)
+library(summarytools)
+library(fpp3)
+library(readxl)
+library(curl)
+library(latex2exp)
+library(seasonal)
+library(GGally)
+library(gridExtra)
+library(doParallel)
+library(reshape2)
+library(Hmisc)
+library(corrplot)
+library(e1071)
+library(caret)
+library(VIM)
+library(rpart)
+library(forecast)
+library(urca)
+library(earth)
+library(glmnet)
+library(cluster)
+library(kernlab)
+library(aTSA)
+library(AppliedPredictiveModeling)
+library(mlbench)
+library(randomForest)
+library(party)
+library(gbm)
+library(Cubist)
+library(partykit)
+library(kableExtra)
+library(factoextra)
+library(FactoMineR)
+library(naniar)
+library(mice)
+library(janitor)
+library(writexl)
+
+
+## ----load_data------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Load train data
+#URL the raw .xlsx file
+url <- "https://raw.githubusercontent.com/ex-pr/project_2_DATA624/main/StudentData.xlsx"
+#Temporary path
+temp_file <- tempfile(fileext = ".xlsx")
+#Download file
+curl_download(url, temp_file)
+#Read file
+data_beverage <- read_excel(temp_file)
+#Copy data
+beverage_df <- data_beverage
+#Clean temp file
+unlink(temp_file)
+
+#Load test data
+#URL the raw .xlsx file
+url <- "https://raw.githubusercontent.com/ex-pr/project_2_DATA624/main/StudentEvaluation.xlsx"
+#Temporary path
+temp_file <- tempfile(fileext = ".xlsx")
+#Download file
+curl_download(url, temp_file)
+#Read file
+data_eval <- read_excel(temp_file)
+#Copy data
+eval_df <- data_eval
+
+
+## ----summary_statistics---------------------------------------------------------------------------------------------------------------------------------------------------
+#Check first rows of data
+DT::datatable(
+      beverage_df[1:10,],
+      options = list(scrollX = TRUE,
+                     deferRender = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     info = FALSE,  
+                     paging=FALSE,
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 1: First 10 Rows of Beverage Data'
+  )) 
+
+DT::datatable(
+      eval_df[1:10,],
+      options = list(scrollX = TRUE,
+                     deferRender = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     info = FALSE,      
+                     paging=FALSE,
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 2: First 10 Rows of Evaluation Data'
+  )) 
+
+#Summary statistics
+DT::datatable(
+      dfSummary(beverage_df, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 3: Summary Statistics for Beverage Data'
+  )) 
+ 
+
+#Summary statistics
+DT::datatable(
+      dfSummary(eval_df, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 4: Summary Statistics for Evaluation Data'
+  )) 
+
+stat <- beverage_df %>%
+  group_by(`Brand Code`) %>%
+  filter(!is.na(`Brand Code`)) %>% 
+  dplyr::summarize(
+    Min = min(PH, na.rm = TRUE),
+    Q1 = quantile(PH, 0.25, na.rm = TRUE),
+    Median = median(PH, na.rm = TRUE),
+    Mean = mean(PH, na.rm = TRUE),
+    Q3 = quantile(PH, 0.75, na.rm = TRUE),
+    Max = max(PH, na.rm = TRUE),
+    StdDev = sd(PH, na.rm = TRUE),
+    Count = n(),
+    Missing = sum(is.na(PH)) 
+  )
+
+#Summary statistics by code
+DT::datatable(
+      stat,
+      options = list(dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE,
+                     paging=FALSE,
+                     info = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 5: Summary Statistics PH for Each Brand Code'
+  )) %>%
+  DT::formatRound(columns = c("Min", "Q1", "Median", "Mean", "Q3", "Max", "StdDev"), digits = 3)
+
+
+## ----ph_plots-------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Distribution PH plot
+ggplot(beverage_df, aes(x = PH)) +
+  geom_histogram(binwidth = 0.1, fill = "lightgreen", color = "black") +
+  theme_minimal() +
+  labs(title = "Distribution of PH", x = "PH", y = "Frequency")
+
+#Distribution Brand Code plot
+ggplot(beverage_df, aes(x = `Brand Code`)) +
+  geom_bar(fill = "lightgreen") +
+  theme_minimal() +
+  labs(title = "Count by Brand Code", x = "Brand Code", y = "Count")
+
+filtered_df <- beverage_df %>%
+  filter(!is.na(`Brand Code`))
+
+#Boxplot brand code vs ph
+ggplot(filtered_df, aes(x = `Brand Code`, y = PH, fill = `Brand Code`)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Boxplot of PH by Brand Code", x = "Brand Code", y = "PH")
+
+
+## ----group_plots----------------------------------------------------------------------------------------------------------------------------------------------------------
+group_1 <- c("Carb Pressure", "Carb Pressure1", "Carb Temp", "Temperature", 
+             "Usage cont", "Fill Pressure", "Air Pressurer", "Alch Rel", 
+             "Balling", "Balling Lvl")
+
+group_2 <- c("Carb Volume", "Carb Rel", "Fill Ounces", "Oxygen Filler", "Density", 
+             "PC Volume", "PSC", "PSC CO2", 
+             "PSC Fill", "Pressure Setpoint", "Pressure Vacuum")
+
+group_3 <- c("Mnf Flow", "Carb Flow", "Filler Level", "Filler Speed", "Hyd Pressure1", 
+             "Hyd Pressure2", "Hyd Pressure3", "Hyd Pressure4", "MFR", "Bowl Setpoint")
+
+#Group 1 plot
+beverage_df %>%
+  select(all_of(group_1)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.3, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 1")
+
+#Group 2 Plot
+beverage_df %>%
+  select(all_of(group_2)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 0.05, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 2")
+
+#Group 3 Plot
+beverage_df %>%
+  select(all_of(group_3)) %>%
+  pivot_longer(cols = everything()) %>%
+  ggplot(aes(value)) +
+  geom_histogram(binwidth = 1, fill = "lightgreen", color = "black") +
+  facet_wrap(~name, scales = "free", ncol = 5) +
+  theme_minimal() +
+  labs(title = "Distribution of Variables: Group 3")
+
+
+## ----na_scatterplt_ph_vs_features-----------------------------------------------------------------------------------------------------------------------------------------
+#NA
+gg_miss_var(beverage_df, show_pct = TRUE)
+
+#Choose numeric vars
+numeric_vars <- beverage_df %>% 
+  select(where(is.numeric)) %>% 
+  names()
+
+# Choose numeric variables, remove PH
+numeric_vars <- beverage_df %>% 
+  select(where(is.numeric)) %>%
+  select(-PH) %>% 
+  names()
+
+#Pivot longer for faceting
+beverage_long <- beverage_df %>%
+  pivot_longer(cols = all_of(numeric_vars), names_to = "variable", values_to = "value")
+
+#All scatter plots faceted by variable
+ggplot(beverage_long, aes(x = PH, y = value)) +
+  geom_point(alpha = 0.6, color = "blue") +
+  facet_wrap(~ variable, scales = "free_y") +
+  theme_minimal() +
+  labs(y = "Value", x = "PH", title = "Relationship between Variables and PH")
+
+
+## ----corr-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+tst <- beverage_df %>% 
+  select(where(is.numeric))
+#Correlation with PH
+cor_table <- cor(drop_na(tst))[, "PH"] %>%
+  as.data.frame() %>%
+  rownames_to_column(var = "Variable") %>%
+  rename(Coefficient = ".") %>%
+  arrange(desc(Coefficient))
+
+kable(cor_table, "html", escape = F, col.names = c('Variable', 'Coefficient')) %>%
+  kable_styling("striped", full_width = F) %>%
+  column_spec(1, bold = T) %>%
+  add_header_above(c("Table 6: Correlation with PH" = 2))
+
+#Corr matrix
+rcore <- rcorr(as.matrix(tst))
+coeff <- rcore$r
+#Filter to include only |r| > 0.1, the rest are 0
+filtered_coeff <- coeff
+filtered_coeff[abs(filtered_coeff) < 0.1] <- 0 
+coeff <- rcore$r
+corrplot(filtered_coeff, tl.cex = .6, tl.col="black", method = 'color', addCoef.col = "black",
+         type="upper", order="hclust", number.cex=0.45, diag=FALSE)
+
+
+## ----colnames_zeroVar-----------------------------------------------------------------------------------------------------------------------------------------------------
+#Fix column names
+colnames(beverage_df) <- make_clean_names(colnames(beverage_df))
+#Apply the same to eval_df 
+colnames(eval_df) <- make_clean_names(colnames(eval_df))
+#Check new column names
+colnames(beverage_df)
+
+# Identify zero-variance predictors
+zero_var <- nearZeroVar(beverage_df, saveMetrics = TRUE)
+print(zero_var[zero_var$nzv, ])
+
+beverage_df <- beverage_df[, !zero_var$nzv]
+eval_df <- eval_df[, !zero_var$nzv]
+
+
+## ----impute_numeric-------------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(547)
+
+#KNN imputation
+beverage_imputed <- as.data.frame(beverage_df)
+beverage_imputed <- knnImputation(beverage_imputed[, !names(beverage_imputed) %in% c("brand_code", "mnf_flow")])
+beverage_imputed$brand_code <- beverage_df$brand_code
+beverage_imputed$mnf_flow <- beverage_df$mnf_flow
+
+#KNN imputation mnf_flow
+beverage_imputed$mnf_flow[beverage_imputed$mnf_flow == -100] <- NA
+beverage_imputed <-  knnImputation(beverage_imputed[, !names(beverage_imputed) %in% c("brand_code")], k = 5, scale = TRUE, meth = 'median')  
+beverage_imputed$brand_code <- beverage_df$brand_code
+
+eval_imputed <- as.data.frame(eval_df)
+eval_imputed <- knnImputation(eval_imputed[, !names(eval_imputed) %in% c("brand_code", "ph")])
+eval_imputed$brand_code <- eval_df$brand_code
+eval_imputed$ph <- eval_df$ph
+
+
+## ----brand_Code_impute----------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(547)
+impute_rf <- function(data, target_var, exclude_vars = NULL) {
+  #Ensure target_var is a factor
+  data[[target_var]] <- factor(data[[target_var]])
+  
+  #Exclude specified variables from the model input
+  if (!is.null(exclude_vars)) {
+    model_data <- data[, !(names(data) %in% exclude_vars)]
+  } else {
+    model_data <- data
+  }
+  
+  #Train model on non-NA data for the target variable
+  rf_model <- randomForest(reformulate(".", target_var), data = model_data[!is.na(model_data[[target_var]]),], na.action = na.omit)
+  
+  #Predict NAs
+  na_indices <- is.na(data[[target_var]])
+  if (sum(na_indices) > 0) {
+    predicted_values <- predict(rf_model, newdata = model_data[na_indices,])
+    data[[target_var]][na_indices] <- predicted_values
+  }
+  
+  return(data)
+}
+
+beverage_imputed <- impute_rf(beverage_imputed, "brand_code")
+eval_imputed <- impute_rf(eval_imputed, "brand_code", exclude_vars = "ph")
+
+#Verify
+colSums(is.na(beverage_imputed))
+colSums(is.na(eval_imputed))
+
+
+## ----encode_categorical---------------------------------------------------------------------------------------------------------------------------------------------------
+#One-hot Encoding for Brand Code
+beverage_imputed$brand_code <- as.factor(beverage_imputed$brand_code)
+eval_imputed$brand_code <- as.factor(eval_imputed$brand_code)
+#Create dummies
+dummy_vars <- dummyVars(~ brand_code, data = beverage_imputed, fullRank = TRUE)
+beverage_imputed <- cbind(beverage_imputed, predict(dummy_vars, newdata = beverage_imputed))
+beverage_imputed <- beverage_imputed %>% select(-brand_code) 
+
+eval_imputed <- cbind(eval_imputed, predict(dummy_vars, newdata = eval_imputed))
+eval_imputed <- eval_imputed %>% select(-brand_code) 
+
+
+## ----new_features---------------------------------------------------------------------------------------------------------------------------------------------------------
+#Creating Interaction Terms
+beverage_revised <- beverage_imputed %>%
+  select(-contains('_interaction'), -contains('composite'), -contains('efficiency'), -contains('index')) %>%
+  mutate(
+    setpoint_diff = bowl_setpoint - pressure_setpoint,  #feature engineering
+    carb_volume2 = carb_volume^2,  #Polynomial feature for carb_volume
+    pc_volume_pressure = pc_volume * carb_pressure  #Interaction feature
+  )
+
+eval_revised <- eval_imputed %>%
+  select(-contains('_interaction'), -contains('composite'), -contains('efficiency'), -contains('index')) %>%
+  mutate(
+    setpoint_diff = bowl_setpoint - pressure_setpoint,  #feature engineering
+    carb_volume2 = carb_volume^2,  #Polynomial feature for carb_volume
+    pc_volume_pressure = pc_volume * carb_pressure  #Interaction feature
+  )
+
+#Remove original columns to reduce collinearity
+beverage_revised <- beverage_revised %>%
+  select(-c(bowl_setpoint, pressure_setpoint, carb_volume, pc_volume, carb_pressure))
+eval_revised <- eval_revised %>%
+  select(-c(bowl_setpoint, pressure_setpoint, carb_volume, pc_volume, carb_pressure))
+
+#Creating a binned feature for carb_temp
+beverage_revised$carb_temp_binned <- cut(beverage_revised$carb_temp,
+                                         breaks=quantile(beverage_revised$carb_temp, probs=seq(0, 1, 0.25)),
+                                         include.lowest=TRUE,
+                                         labels=FALSE)
+
+eval_revised$carb_temp_binned <- cut(eval_revised$carb_temp,
+                                         breaks=quantile(eval_revised$carb_temp, probs=seq(0, 1, 0.25)),
+                                         include.lowest=TRUE,
+                                         labels=FALSE)
+
+#Remove original carb_temp if the binned version is preferred
+beverage_revised <- beverage_revised %>%
+  select(-carb_temp)
+
+eval_revised <- eval_revised %>%
+  select(-carb_temp)
+
+
+## ----transform_vars-------------------------------------------------------------------------------------------------------------------------------------------------------
+#Apply transformations
+set.seed(123)
+# Log transformations
+beverage_transformed <- beverage_imputed
+beverage_transformed$filler_speed <- log(beverage_transformed$filler_speed)
+beverage_transformed$mfr <- log(beverage_transformed$mfr)
+
+#Square root transformations
+beverage_transformed$temperature <- sqrt(beverage_transformed$temperature)
+beverage_transformed$air_pressurer <- sqrt(beverage_transformed$air_pressurer)
+
+#Shifted log transformations
+beverage_transformed$oxygen_filler <- log(beverage_transformed$oxygen_filler + 1)
+beverage_transformed$psc_co2 <- log(beverage_transformed$psc_co2 + 1)
+
+#Log transformations
+eval_transformed <- eval_imputed
+eval_transformed$filler_speed <- log(eval_imputed$filler_speed)
+eval_transformed$mfr <- log(eval_imputed$mfr)
+
+#Square root transformations
+eval_transformed$temperature <- sqrt(eval_transformed$temperature)
+eval_transformed$air_pressurer <- sqrt(eval_transformed$air_pressurer)
+
+#Shifted log transformations
+eval_transformed$oxygen_filler <- log(eval_transformed$oxygen_filler + 1)
+eval_transformed$psc_co2 <- log(eval_transformed$psc_co2 + 1)
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Summary statistics
+DT::datatable(
+      dfSummary(beverage_revised, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 7: Summary Statistics for Transformed Beverage Data'
+  )) 
+ 
+
+#Summary statistics
+DT::datatable(
+      dfSummary(eval_revised, text.graph.col = FALSE, graph.col = FALSE, style = "grid", valid.col = FALSE),
+      extensions = c('Scroller'),
+      options = list(scrollY = 350,
+                     scrollX = 500,
+                     deferRender = TRUE,
+                     scroller = TRUE,
+                     dom = 'lBfrtip',
+                     fixedColumns = TRUE, 
+                     searching = FALSE), 
+      rownames = FALSE,
+      caption = htmltools::tags$caption(
+    style = 'caption-side: top; text-align: left; font-size: 16px; font-weight: bold;',
+    'Table 8: Summary Statistics for Transformed Evaluation Data'
+  )) 
+
+
+## ----parallel_core--------------------------------------------------------------------------------------------------------------------------------------------------------
+#Detect the number of available cores
+numCores <- detectCores()
+
+#Register parallel backend (use numCores - 1 to leave 1 core free for system tasks)
+cl <- makeCluster(numCores - 1)
+registerDoParallel(cl)
+
+
+## ----split_data_revised---------------------------------------------------------------------------------------------------------------------------------------------------
+#Data with new features
+set.seed(123)
+trainIndex <- createDataPartition(beverage_revised$ph, p = 0.8, list = FALSE)
+train_revised <- beverage_revised[trainIndex, ]
+test_revised <- beverage_revised[-trainIndex, ]
+eval_revised <- subset(eval_revised, select = -ph)
+
+
+## ----split_data_transf----------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(123)
+trainIndex <- createDataPartition(beverage_transformed$ph, p = 0.8, list = FALSE)
+train_transformed <- beverage_transformed[trainIndex, ]
+test_transformed <- beverage_transformed[-trainIndex, ]
+eval_transformed <- subset(eval_transformed, select = -ph)
+#Setup cv
+control <- trainControl(method = "repeatedcv", number = 10, repeats = 3, allowParallel = TRUE)
+
+
+## ----mars_model-----------------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(123)
+#Grid with parameters
+marsGrid <- expand.grid(degree = 1:2, nprune = 2:20)
+
+#Train MARS
+marsModel <- train(ph ~ ., data = train_transformed, 
+                   method = "earth",
+                   preProc = c("center", "scale"),
+                   tuneGrid = marsGrid,
+                   trControl = control
+)
+
+
+#degree nprune      RMSE   Rsquared       MAE   
+# 2     20      0.1269369   0.459168    0.0960094 
+mars_tune <- marsModel$results[marsModel$results$nprune == marsModel$bestTune$nprune & marsModel$results$degree == marsModel$bestTune$degree, ]
+kable(mars_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("MARS Model Tuning Results"=9), bold = TRUE)
+
+#Predict
+marsPred <- predict(marsModel, newdata = test_transformed)
+#RMSE      Rsquared        MAE 
+#0.12208106 0.51031566 0.09219265
+mars_results <- postResample(pred = marsPred, obs = test_transformed$ph)
+kable(mars_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("MARS Model Performance Metrics"=2), bold = TRUE)
+
+
+## ----mars_varimpt---------------------------------------------------------------------------------------------------------------------------------------------------------
+importance_mars <- varImp(marsModel, scale = FALSE)
+importance_mars_sorted <- as.data.frame(importance_mars$importance) %>%
+  arrange(desc(Overall))
+kable(importance_mars_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("MARS Model Variable Importance" = 2), bold = TRUE)
+plot(importance_mars, top = 10, main = "Top 10 predictors, MARS Model") 
+
+
+## ----svm_model------------------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(123)
+#Grid with parameters
+svmGrid <- expand.grid(sigma = c(0.001, 0.01, 0.1), C = c(0.1, 1, 10, 100))
+#Train SVM
+svmModel <- train(ph ~ ., data = train_transformed, 
+                  method = "svmRadial", 
+                  preProc = c("center", "scale"),
+                  tuneGrid = svmGrid,
+                  trControl = control
+                  )
+
+#sigma  C      RMSE   Rsquared        MAE   
+# 0.01 10  0.1193689  0.5235771   0.08771225
+svm_tune <- svmModel$results[svmModel$results$sigma == svmModel$bestTune$sigma & svmModel$results$C == svmModel$bestTune$C, ]
+kable(svm_tune , "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("SVM Model Tuning Results"=9), bold = TRUE)
+
+#Predict
+svmPred <- predict(svmModel, newdata = test_transformed)
+#RMSE   Rsquared        MAE 
+#0.11787203 0.54495184 0.08445738 
+svm_results <- postResample(pred = svmPred, obs = test_transformed$ph)
+kable(svm_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("SVM Model Performance Metrics"=2), bold = TRUE)
+
+
+## ----svm_varimpt----------------------------------------------------------------------------------------------------------------------------------------------------------
+importance_svm <- varImp(svmModel, scale = FALSE)
+importance_svm_sorted <- as.data.frame(importance_svm$importance) %>%
+  arrange(desc(Overall))
+kable(importance_svm_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("SVM Model Variable Importance" = 2), bold = TRUE)
+plot(importance_svm, top = 10, main = "Top 10 predictors, SVM Model")
+
+
+## ----nnet_model-----------------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(123)
+#Grid with parameters
+nnetGrid <- expand.grid(.decay = c(0, 0.01, 0.1), .size = 1:10, .bag = FALSE)
+
+#Train avNNet
+nnetModel <- train(ph ~ ., data = train_transformed, 
+                   method = "avNNet",
+                   preProc = c("center", "scale"),
+                   tuneGrid = nnetGrid,
+                   trControl = control,
+                   linout = TRUE,
+                   trace = FALSE)  
+
+#decay size   bag      RMSE    Rsquared       MAE
+#  0   10   FALSE   0.1145209   0.5585798 0.0855949 
+nnet_tune <- nnetModel$results[nnetModel$results$size == nnetModel$bestTune$size & nnetModel$results$decay == nnetModel$bestTune$decay, ]
+kable(nnet_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("avNNet Model Tuning Results"=10), bold = TRUE)
+
+#Predict
+nnetPred <- predict(nnetModel, newdata = test_transformed)
+#RMSE        Rsquared        MAE 
+#0.11073852 0.59788239 0.08266435
+nnet_results <- postResample(pred = nnetPred, obs = test_transformed$ph)
+kable(nnet_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("avNNet Model Performance Metrics"=2), bold = TRUE)
+
+
+## ----nnet_varimpt---------------------------------------------------------------------------------------------------------------------------------------------------------
+importance_nnet <- varImp(nnetModel, scale = FALSE)
+importance_nnet_sorted <- as.data.frame(importance_nnet$importance) %>%
+  arrange(desc(Overall))
+kable(importance_nnet_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("avNNet Model Variable Importance" = 2), bold = TRUE)
+plot(importance_nnet, top = 10, main = "Top 10 predictors, avNNet Model")
+
+
+## ----gbm_model------------------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(123)
+#Grid with parameters
+gbmGrid <- expand.grid(.n.trees = seq(100, 1000, by = 100), .interaction.depth = seq(1, 7, by = 2), .shrinkage = 0.01, .n.minobsinnode = c(5, 10, 15))
+#Train GBM
+gbm_model <- train(ph ~ ., data = train_revised, 
+                   method = "gbm", 
+                   preProc = c("center", "scale"),
+                   tuneGrid = gbmGrid, 
+                   trControl = control,
+                   verbose = FALSE)
+
+#shrinkage interaction.depth n.minobsinnode n.trees      RMSE     Rsquared        MAE   
+# 0.01                 7             10    1000       0.1101819    0.5955535 0.08304377
+gbm_tune <- gbm_model$results[gbm_model$results$n.trees == gbm_model$bestTune$n.trees & gbm_model$results$interaction.depth == gbm_model$bestTune$interaction.depth & gbm_model$results$n.minobsinnode == gbm_model$bestTune$n.minobsinnode,]
+kable(gbm_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("GBM Model Tuning Results"=11), bold = TRUE)
+
+#Predict
+gbm_predictions <- predict(gbm_model, newdata = test_revised)
+#      RMSE   Rsquared        MAE 
+#0.10548388 0.64448254 0.07928038 
+gbm_results <- postResample(pred = gbm_predictions, obs = test_revised$ph)
+kable(gbm_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("GBM Model Performance Metrics"=2), bold = TRUE)
+
+
+## ----gbm_varimpt----------------------------------------------------------------------------------------------------------------------------------------------------------
+importance_gbm <- varImp(gbm_model, scale = FALSE)
+importance_gbm_sorted <- as.data.frame(importance_gbm$importance) %>%
+  arrange(desc(Overall))
+kable(importance_gbm_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("GBM Model Variable Importance" = 2), bold = TRUE)
+plot(importance_gbm, top = 10, main = "Top 10 predictors, GBM")
+
+
+## ----rf_model-------------------------------------------------------------------------------------------------------------------------------------------------------------
+set.seed(123)
+#Grid with parameters
+rfGrid <- expand.grid(.mtry = c(2, 4, 6, 8, 10))
+
+#Train rf
+rf_model <- train(ph ~ ., data = train_revised, 
+                  method = "rf",
+                  preProc = c("center", "scale"),
+                  trControl = control,
+                  tuneGrid = rfGrid,
+                  importance = TRUE) 
+
+#mtry      RMSE   Rsquared        MAE   
+# 10  0.1007928     0.6741332   0.07271081 
+rf_tune <- rf_model$results[rf_model$results$mtry == rf_model$bestTune$mtry, ]
+kable(rf_tune, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("RF Model Tuning Results"=8), bold = TRUE)
+#Predict
+rf_pred <- predict(rf_model, newdata = test_revised)
+#RMSE      Rsquared        MAE 
+#0.09630017 0.71303966 0.06989033 
+rf_results <- postResample(pred = rf_pred, obs = test_revised$ph)
+kable(rf_results, "html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+  row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+  add_header_above(c("RF Model Performance Metrics"=2), bold = TRUE)
+
+# Correct data frame for actual vs predicted values
+res<- data.frame(Actual = test_revised$ph, Predicted = rf_pred)
+# Scatter plot: Actual vs Predicted Values
+ggplot(res, aes(x = Actual, y = Predicted)) +
+    geom_point(color = "blue", alpha = 0.7) +
+    geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+    labs(title = "Actual vs Predicted pH Values (RF Model)", 
+         x = "Actual pH", y = "Predicted pH") +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5, size = 14, face = "bold"))
+
+
+## ----rf_variimpt----------------------------------------------------------------------------------------------------------------------------------------------------------
+importance_rf <- varImp(rf_model, scale = FALSE)
+importance_rf_sorted <- as.data.frame(importance_rf$importance) %>%
+  arrange(desc(Overall))
+kable(importance_rf_sorted, "html") %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = F, position = "center") %>%
+    row_spec(0, bold = TRUE, color = "black", background = "#D3D3D3") %>%
+    add_header_above(c("RF Model Variable Importance" = 2), bold = TRUE)
+plot(importance_rf, top = 10, main = "Top 10 predictors, Random Forest")
+
+
+## -------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Stop parallel once you're done with models
+stopCluster(cl)
+
+
+## ----compare_models-------------------------------------------------------------------------------------------------------------------------------------------------------
+#Create empty df
+results <- data.frame(
+  Model = character(),
+  Resample_RMSE = numeric(),
+  Resample_R2 = numeric(),
+  Resample_MAE = numeric(),
+  Test_RMSE = numeric(),
+  Test_R2 = numeric(),
+  Test_MAE = numeric(),
+  stringsAsFactors = FALSE
+)
+
+#Fill df with results
+results <- rbind(results, data.frame(Model = "MARS", Resample_RMSE = mars_tune$RMSE, Resample_R2 = mars_tune$Rsquared, Resample_MAE = mars_tune$MAE, Test_RMSE = mars_results[1], Test_R2 = mars_results[2], Test_MAE = mars_results[3]))
+results <- rbind(results, data.frame(Model = "SVM", Resample_RMSE = svm_tune$RMSE, Resample_R2 = svm_tune$Rsquared, Resample_MAE = svm_tune$MAE, Test_RMSE = svm_results[1], Test_R2 = svm_results[2], Test_MAE = svm_results[3]))
+results <- rbind(results, data.frame(Model = "NNet", Resample_RMSE = nnet_tune$RMSE, Resample_R2 = nnet_tune$Rsquared, Resample_MAE = nnet_tune$MAE, Test_RMSE = nnet_results[1], Test_R2 = nnet_results[2], Test_MAE = nnet_results[3]))
+results <- rbind(results, data.frame(Model = "GBM", Resample_RMSE = gbm_tune$RMSE, Resample_R2 = gbm_tune$Rsquared, Resample_MAE = gbm_tune$MAE, Test_RMSE = gbm_results[1], Test_R2 = gbm_results[2], Test_MAE = gbm_results[3]))
+results <- rbind(results, data.frame(Model = "RF", Resample_RMSE = rf_tune$RMSE, Resample_R2 = rf_tune$Rsquared, Resample_MAE = rf_tune$MAE, Test_RMSE = rf_results[1], Test_R2 = rf_results[2], Test_MAE = rf_results[3]))
+row.names(results) <- NULL
+
+kable(results, "html", escape = FALSE, align = c('l', rep('c', 6)), col.names = c("Model", "Resample RMSE", "Resample RB2", "Resample MAE", "Test RMSE", "Test RB2", "Test MAE")) %>%
+  kable_styling("striped", full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  add_header_above(c(" " = 1, "Resample Metrics" = 3, "Test Metrics" = 3), 
+                   bold = TRUE, background = "#D3D3D3", color = "black")
+
+
+## ----save_pred------------------------------------------------------------------------------------------------------------------------------------------------------------
+#Predictions for the evaluation dataset
+eval_pred <- predict(rf_model, newdata = eval_revised)
+
+#Create df
+eval_results <- data.frame(
+  ph_pred = eval_pred
+)
+
+eval_df_pred <- eval_df
+eval_df_pred$ph <- eval_pred
+
+#Save to Excel
+write_xlsx(eval_df_pred , "eval_df_pred .xlsx")
+write_xlsx(eval_results, "ph_predictions.xlsx")
+
+par(mfrow = c(1, 2))
+hist(beverage_revised$ph, main = "Original Data Distribution", xlab = "pH", col = "skyblue", border = "white")
+hist(eval_pred, main = "Predicted pH Distribution", xlab = "pH", col = "lightgreen", border = "white")
+par(mfrow = c(1, 1))
+```
